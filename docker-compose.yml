@@ -1,0 +1,22 @@
+version: "3.9"
+
+# YT Studio v1.0 — Combined Waz Clipper + Bulk YT Downloader
+# POT (bgutil-pot-provider) has been REMOVED — no longer required.
+
+services:
+  yt-studio:
+    build: .
+    container_name: yt-studio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
+      - SESSION_SECRET=${SESSION_SECRET:-changeme}
+      - YTDLP_PROXY=${YTDLP_PROXY:-}
+      - VMESS_LINK=${VMESS_LINK:-}
+    volumes:
+      - ./data:/app/data

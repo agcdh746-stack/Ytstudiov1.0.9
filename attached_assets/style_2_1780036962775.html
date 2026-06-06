@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1080px; height: 1080px; overflow: hidden; font-family: 'Noto Sans Bengali', sans-serif; }
+  .thumb {
+    width: 1080px; height: 1080px;
+    background: radial-gradient(ellipse at 30% 20%, #1a1a3e 0%, #0a0a0a 70%);
+    position: relative; overflow: hidden;
+  }
+  .glow1 { position: absolute; top: -100px; right: -100px; width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(240,192,64,0.15) 0%, transparent 70%); }
+  .glow2 { position: absolute; bottom: -100px; left: -100px; width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(100,60,200,0.2) 0%, transparent 70%); }
+  .header {
+    position: absolute; top: 0; left: 0; right: 0; height: 110px;
+    background: linear-gradient(90deg, #f0c040, #e08020);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px; z-index: 10;
+  }
+  .channel-logo { width: 60px; height: 60px; border-radius: 50%; background: #111; display: flex; align-items: center; justify-content: center; font-size: 30px; margin-right: 14px; }
+  .channel-left { display: flex; align-items: center; }
+  .channel-name { color: #111; font-size: 34px; font-weight: 900; }
+  .follow-btn { background: rgba(0,0,0,0.2); border: 2px solid rgba(0,0,0,0.3); border-radius: 40px; padding: 8px 28px; color: #111; font-size: 24px; font-weight: 700; }
+  .title-block {
+    position: absolute; top: 110px; left: 0; right: 0;
+    background: rgba(10,10,10,0.92); border-bottom: 6px solid #f0c040;
+    padding: 30px 50px 24px; z-index: 8;
+  }
+  .main-title { color: #fff; font-size: 56px; font-weight: 900; line-height: 1.25; margin-bottom: 10px; }
+  .sub-title { color: #f0c040; font-size: 32px; font-weight: 600; }
+  .center-area {
+    position: absolute; top: 400px; left: 0; right: 0; bottom: 110px;
+    display: flex; align-items: center; justify-content: center; z-index: 5;
+  }
+  .play-btn {
+    width: 140px; height: 140px; border-radius: 50%;
+    background: rgba(240,192,64,0.12); border: 5px solid #f0c040;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 60px; color: #f0c040;
+  }
+  .progress-area {
+    position: absolute; bottom: 125px; left: 50px; right: 50px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(240,192,64,0.25);
+    border-radius: 20px; padding: 18px 26px; z-index: 7;
+  }
+  .progress-title { color: #eee; font-size: 26px; font-weight: 700; margin-bottom: 10px; }
+  .progress-bar-bg { background: #333; border-radius: 10px; height: 10px; }
+  .progress-bar-fill { background: linear-gradient(90deg, #f0c040, #e08020); border-radius: 10px; height: 10px; width: 45%; }
+  .bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 110px;
+    background: linear-gradient(90deg, #f0c040, #e08020);
+    display: flex; align-items: center; justify-content: center; gap: 16px; z-index: 10;
+  }
+  .bottom-text { color: #111; font-size: 36px; font-weight: 800; }
+  .star1 { position: absolute; top: 160px; right: 40px; font-size: 60px; opacity: 0.2; z-index: 6; }
+  .star2 { position: absolute; bottom: 140px; left: 40px; font-size: 48px; opacity: 0.15; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="thumb">
+  <div class="glow1"></div>
+  <div class="glow2"></div>
+  <div class="header">
+    <div class="channel-left">
+      <div class="channel-logo">🌙</div>
+      <span class="channel-name">অব্যকুল</span>
+    </div>
+    <div class="follow-btn">🌙 Follow Us</div>
+  </div>
+  <div class="title-block">
+    <div class="main-title">বড় ভাইয়ের প্রতি ছোট ভাইয়ের ভালোবাসা</div>
+    <div class="sub-title">এমন হওয়া উচিত 🌸🌸</div>
+  </div>
+  <div class="star1">⭐</div>
+  <div class="star2">✨</div>
+  <div class="center-area">
+    <div class="play-btn">▶</div>
+  </div>
+  <div class="progress-area">
+    <div class="progress-title">🎙️ বড় ভাইয়ের প্রতি ছোট ভাইয়ের...</div>
+    <div class="progress-bar-bg"><div class="progress-bar-fill"></div></div>
+  </div>
+  <div class="bottom-bar">
+    <span style="font-size:42px">🎙️</span>
+    <span class="bottom-text">শায়খ আহমাদুল্লাহ</span>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1080px; height: 1080px; overflow: hidden; font-family: 'Noto Sans Bengali', sans-serif; }
+  .thumb {
+    width: 1080px; height: 1080px;
+    background: linear-gradient(150deg, #0d3d22 0%, #1a5c33 40%, #0d3d22 100%);
+    position: relative; overflow: hidden;
+  }
+  .arc1 { position: absolute; top: -120px; right: -120px; width: 450px; height: 450px; border-radius: 50%; background: rgba(76,175,128,0.12); }
+  .arc2 { position: absolute; bottom: -120px; left: -120px; width: 480px; height: 480px; border-radius: 50%; background: rgba(76,175,128,0.1); }
+  .arabic-deco { position: absolute; top: 380px; left: 40px; font-size: 90px; opacity: 0.07; color: #fff; z-index: 4; }
+  .header {
+    position: absolute; top: 0; left: 0; right: 0; height: 110px;
+    background: rgba(0,0,0,0.4); border-bottom: 4px solid #4caf80;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px; z-index: 10;
+  }
+  .channel-logo { width: 60px; height: 60px; border-radius: 50%; background: #4caf80; display: flex; align-items: center; justify-content: center; font-size: 30px; margin-right: 14px; }
+  .channel-left { display: flex; align-items: center; }
+  .channel-name { color: #fff; font-size: 34px; font-weight: 900; }
+  .follow-btn { background: rgba(76,175,128,0.25); border: 2px solid #4caf80; border-radius: 40px; padding: 8px 28px; color: #d4f5e0; font-size: 24px; font-weight: 700; }
+  .title-block {
+    position: absolute; top: 110px; left: 0; right: 0;
+    background: rgba(0,0,0,0.55); border-bottom: 6px solid #4caf80;
+    padding: 30px 50px 24px; z-index: 8;
+  }
+  .main-title { color: #fff; font-size: 56px; font-weight: 900; line-height: 1.25; margin-bottom: 10px; }
+  .sub-title { color: #a0e8bc; font-size: 32px; font-weight: 600; }
+  .center-area {
+    position: absolute; top: 400px; left: 0; right: 0; bottom: 110px;
+    display: flex; align-items: center; justify-content: center; z-index: 5;
+  }
+  .play-btn {
+    width: 140px; height: 140px; border-radius: 50%;
+    background: rgba(76,175,128,0.18); border: 5px solid #4caf80;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 60px; color: #4caf80;
+  }
+  .progress-area {
+    position: absolute; bottom: 125px; left: 50px; right: 50px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(76,175,128,0.3);
+    border-radius: 20px; padding: 18px 26px; z-index: 7;
+  }
+  .progress-title { color: #d4f5e0; font-size: 26px; font-weight: 700; margin-bottom: 10px; }
+  .progress-bar-bg { background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; }
+  .progress-bar-fill { background: linear-gradient(90deg, #4caf80, #a0e8bc); border-radius: 10px; height: 10px; width: 55%; }
+  .bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 110px;
+    background: rgba(0,0,0,0.5); border-top: 4px solid #4caf80;
+    display: flex; align-items: center; justify-content: center; gap: 16px; z-index: 10;
+  }
+  .bottom-text { color: #fff; font-size: 36px; font-weight: 800; }
+  .leaf1 { position: absolute; top: 160px; right: 40px; font-size: 70px; opacity: 0.2; z-index: 6; }
+  .leaf2 { position: absolute; bottom: 140px; left: 40px; font-size: 55px; opacity: 0.15; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="thumb">
+  <div class="arc1"></div>
+  <div class="arc2"></div>
+  <div class="arabic-deco">﷽</div>
+  <div class="header">
+    <div class="channel-left">
+      <div class="channel-logo">☪️</div>
+      <span class="channel-name">অব্যকুল</span>
+    </div>
+    <div class="follow-btn">☪️ Follow Us</div>
+  </div>
+  <div class="title-block">
+    <div class="main-title">বড় ভাইয়ের প্রতি ছোট ভাইয়ের ভালোবাসা</div>
+    <div class="sub-title">এমন হওয়া উচিত 🌸🌸</div>
+  </div>
+  <div class="leaf1">🌿</div>
+  <div class="leaf2">🍃</div>
+  <div class="center-area">
+    <div class="play-btn">▶</div>
+  </div>
+  <div class="progress-area">
+    <div class="progress-title">🎙️ বড় ভাইয়ের প্রতি ছোট ভাইয়ের...</div>
+    <div class="progress-bar-bg"><div class="progress-bar-fill"></div></div>
+  </div>
+  <div class="bottom-bar">
+    <span style="font-size:42px">🎙️</span>
+    <span class="bottom-text">শায়খ আহমাদুল্লাহ</span>
+  </div>
+</div>
+</body>
+</html>

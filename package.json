@@ -1,0 +1,21 @@
+{
+  "name": "yt-studio",
+  "version": "1.0.0",
+  "description": "YT Studio — Waz Clipper + Bulk YT Downloader combined. POT-free, Deno-based bot bypass, VMess/VLESS/Trojan/SS tunnel via Xray-core, Google Drive upload, Bengali title rendering via Pillow+libraqm+harfbuzz.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "googleapis": "^144.0.0",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^10.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
