@@ -289,7 +289,7 @@ async function makeClip({
     const spkX = hasMic ? (groupX + micW + 14) : Math.floor((W - spkCanvasW) / 2);
     const spkCanvasH = Math.floor(speakerBandH * 0.85);
     const spkY2 = speakerY + Math.floor((speakerBandH - spkCanvasH) / 2);
-    videoChain.push(`${layer}[${speakerIdx}:v]overlay=${spkX}:${spkY2}:format=auto[v]`);
+    videoChain.push(`${layer}[${speakerIdx}:v]overlay=${spkX}:${spkY2}:format=auto[v0]`);
   } else {
     videoChain.push(`${layer}null[v0]`);
   }
