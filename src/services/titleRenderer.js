@@ -264,8 +264,11 @@ function renderTitlePng(opts) {
 }
 
 // =====================================================================
-// Halftone background PNG generator
-// Matches CSS: background:#F5C518 + radial-gradient dots 6px/1px
+// Pro Title Background PNG generator (Style C)
+// - Halftone dots
+// - Top-to-bottom gradient (#FFE033 -> #e6b800)
+// - Left accent strip (5px black)
+// - Top shiny highlight (white fade)
 // =====================================================================
 const PY_HALFTONE = `
 import sys, json
@@ -275,23 +278,29 @@ cfg = json.loads(sys.argv[1])
 W = int(cfg['width'])
 H = int(cfg['height'])
 out = cfg['out']
-bg = tuple(cfg.get('bg', [245, 197, 24]))
-dot_color = tuple(cfg.get('dot_color', [0, 0, 0]))
-dot_opacity = cfg.get('dot_opacity', 0.18)
 spacing = int(cfg.get('spacing', 6))
 radius = float(cfg.get('radius', 1.0))
+accent_w = int(cfg.get('accent_w', 5))
 
-img = Image.new('RGBA', (W, H), (*bg, 255))
+# Gradient: #FFE033 top -> #e6b800 bottom
+img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
 draw = ImageDraw.Draw(img)
 
+for y in range(H):
+    t = y / max(H - 1, 1)
+    r = int(255 + (230 - 255) * t)
+    g = int(224 + (184 - 224) * t)
+    b = int(51  + (0   - 51)  * t)
+    draw.line([(0, y), (W, y)], fill=(r, g, b, 255))
+
+# Halftone dots (skip accent zone)
 dot_fill = (
-    int(bg[0] * (1 - dot_opacity) + dot_color[0] * dot_opacity),
-    int(bg[1] * (1 - dot_opacity) + dot_color[1] * dot_opacity),
-    int(bg[2] * (1 - dot_opacity) + dot_color[2] * dot_opacity),
+    int(255 * 0.82),
+    int(197 * 0.82),
+    int(24  * 0.82),
     255
 )
-
-cx = spacing // 2
+cx = accent_w + spacing // 2
 while cx < W:
     cy = spacing // 2
     while cy < H:
@@ -299,15 +308,24 @@ while cx < W:
         cy += spacing
     cx += spacing
 
+# Left accent strip (black)
+draw.rectangle([0, 0, accent_w - 1, H - 1], fill=(17, 17, 17, 255))
+
+# Top shiny highlight (white fade, upper 35%)
+highlight_h = int(H * 0.35)
+for y in range(highlight_h):
+    alpha = int(50 * (1 - y / highlight_h))
+    draw.line([(accent_w, y), (W, y)], fill=(255, 255, 255, alpha))
+
 img.save(out)
 print('OK', img.size)
 `;
 
-function renderHalftoneBg({ width, height, outPath, bg = [245, 197, 24], dotColor = [0, 0, 0], dotOpacity = 0.18, spacing = 6, radius = 1.0 }) {
-  const cfg = { width, height, out: outPath, bg, dot_color: dotColor, dot_opacity: dotOpacity, spacing, radius };
-  const r = spawnSync('python3', ['-c', PY_HALFTONE, JSON.stringify(cfg)], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error(`Halftone render failed: ${r.stderr || r.stdout}`);
-  if (!fs.existsSync(outPath)) throw new Error('Halftone render: output PNG not created');
+function renderHalftoneBg({ width, height, outPath, spacing = 6, radius = 1.0, accentW = 5 }) {
+  const cfg = { width, height, out: outPath, spacing, radius, accent_w: accentW };
+  const r = require('child_process').spawnSync('python3', ['-c', PY_HALFTONE, JSON.stringify(cfg)], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`HalftoneBg render failed: ${r.stderr || r.stdout}`);
+  if (!require('fs').existsSync(outPath)) throw new Error('HalftoneBg: output PNG not created');
   return outPath;
 }
 
