@@ -306,6 +306,11 @@ async function runJob(id) {
 
           jl.info(`   ↳ Part ${partNo + 1}/${partRanges.length}: source=${path.basename(src.sourcePath)}, sectionStart=${(src.sectionStart || 0).toFixed(2)}s, origStart=${origStart}s → localStart=${localStart.toFixed(2)}s, dur=${duration}s`);
 
+          // ---------------------------------------------------------
+          // NEW DEBUG LOG ADDED HERE
+          // ---------------------------------------------------------
+          jl.info(`📝 subtitle count: ${(clip.subtitles || []).length}`);
+
           await makeClip({
             input: src.sourcePath,
             start: localStart,
