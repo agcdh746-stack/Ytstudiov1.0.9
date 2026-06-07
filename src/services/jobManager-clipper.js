@@ -125,6 +125,24 @@ function buildDucking(payload) {
   };
 }
 
+function parseSubTs(ts) {
+  const parts = String(ts).trim().split(':');
+  if (parts.length === 3) return +parts[0] * 3600 + +parts[1] * 60 + +parts[2];
+  if (parts.length === 2) return +parts[0] * 60 + +parts[1];
+  return parseFloat(ts) || 0;
+}
+
+function normalizeSubtitles(raw) {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  return raw
+    .map(s => ({
+      t:    String(s.t || s.time || s.start || '0').trim(),
+      text: String(s.text || s.txt || '').trim(),
+    }))
+    .filter(s => s.text.length > 0)
+    .sort((a, b) => parseSubTs(a.t) - parseSubTs(b.t));
+}
+
 function createJob(payload) {
   const id = uuid().slice(0, 8);
   const defaultStyle = VALID_STYLES.has(payload.defaultStyle) ? payload.defaultStyle : 'centered';
@@ -170,6 +188,7 @@ function createJob(payload) {
         ranges: ranges.length > 1 ? ranges : undefined,
         recap: ranges.length > 1,
         style: VALID_STYLES.has(c.style) ? c.style : defaultStyle,
+        subtitles: normalizeSubtitles(c.subtitles),
         status: 'pending',
         filename: null,
         error: null,
@@ -305,6 +324,7 @@ async function runJob(id) {
             customHeaderText: job.headerText,
             followText: job.followText,
             ducking: job.ducking,
+            subtitles: clip.subtitles || [],
           });
 
           tempParts.push(partOut);
