@@ -355,7 +355,7 @@ async function makeClip({
       videoChain.push(
         `[${subIdx}:v]scale=${subtitleW}:${subtitleH}:flags=lanczos,` +
         `format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':` +
-        `a='${fadeExpr}*alpha(X,Y)'${alphaLabel}`
+        `a='${fadeExpr}*a(X,Y)'${alphaLabel}`
       );
       videoChain.push(
         `${subLayer}${alphaLabel}overlay=${subX}:${subtitleY}:format=auto${outLabel}`
