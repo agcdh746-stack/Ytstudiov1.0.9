@@ -394,12 +394,11 @@ img.save(out)
 print('OK', img.size)
 `;
 
+// Two-tone subtitle: first half white, second half yellow
+// colorOffset unused now — kept for API compat
 const SUBTITLE_COLORS = [
-  [255, 230, 0,   255],  // yellow
-  [255, 255, 255, 255],  // white
-  [0,   255, 220, 255],  // cyan
-  [255, 140, 0,   255],  // orange
-  [180, 255, 80,  255],  // lime
+  [255, 255, 255, 255],  // white  (first half)
+  [255, 230, 0,   255],  // yellow (second half)
 ];
 
 function renderSubtitlePng({ text, width, height = 120, fontSize = 52, outPath, colorOffset = 0 }) {
@@ -411,9 +410,11 @@ function renderSubtitlePng({ text, width, height = 120, fontSize = 52, outPath, 
     return outPath;
   }
 
+  // Two-tone: first half white, second half yellow
+  const half = Math.ceil(words.length / 2);
   const coloredWords = words.map((w, i) => ({
     text: w,
-    color: SUBTITLE_COLORS[(colorOffset + i) % SUBTITLE_COLORS.length],
+    color: i < half ? SUBTITLE_COLORS[0] : SUBTITLE_COLORS[1],
   }));
 
   const cfg = {
@@ -421,11 +422,11 @@ function renderSubtitlePng({ text, width, height = 120, fontSize = 52, outPath, 
     height:      Math.max(1, Math.round(height)),
     out:         outPath,
     words:       coloredWords,
-    font_path:   pickFont('bold'),
+    font_path:   (() => { try { return pickFont('regular'); } catch(_) { return pickFont('bold'); } })(),
     font_size:   Math.max(20, Math.round(fontSize)),
-    glow_color:  [255, 255, 255, 160],
-    glow_radius: 10,
-    padding_x:   24,
+    glow_color:  [0, 0, 0, 200],       // dark glow/shadow for readability
+    glow_radius: 6,
+    padding_x:   48,                    // more margin left/right
   };
 
   const r = spawnSync('python3', ['-c', PY_SUBTITLE_RENDERER, JSON.stringify(cfg)], {
