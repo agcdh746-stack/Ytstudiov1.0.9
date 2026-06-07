@@ -349,16 +349,16 @@ async function makeClip({
         `0))))`;
 
       const subX = Math.floor((W - subtitleW) / 2);
-      const alphaLabel = `[salpha${si}]`;
-      const outLabel   = `[vsub${si}]`;
+      const outLabel = `[vsub${si}]`;
+
+      // overlay 'enable' expression — no geq/alpha needed, works on all FFmpeg versions
+      const enableExpr = `between(t,${subStart.toFixed(3)},${subEnd.toFixed(3)})`;
 
       videoChain.push(
-        `[${subIdx}:v]scale=${subtitleW}:${subtitleH}:flags=lanczos,` +
-        `format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':` +
-        `a='${fadeExpr}*a(X,Y)'${alphaLabel}`
+        `[${subIdx}:v]scale=${subtitleW}:${subtitleH}:flags=lanczos,format=rgba[sscaled${si}]`
       );
       videoChain.push(
-        `${subLayer}${alphaLabel}overlay=${subX}:${subtitleY}:format=auto${outLabel}`
+        `${subLayer}[sscaled${si}]overlay=${subX}:${subtitleY}:format=auto:enable='${enableExpr}'${outLabel}`
       );
       subLayer = outLabel;
     }
