@@ -268,7 +268,6 @@ function renderTitlePng(opts) {
 // - Halftone dots
 // - Top-to-bottom gradient (#FFE033 -> #e6b800)
 // - Left accent strip (5px black)
-// - Top shiny highlight (white fade)
 // =====================================================================
 const PY_HALFTONE = `
 import sys, json
@@ -310,12 +309,6 @@ while cx < W:
 
 # Left accent strip (black)
 draw.rectangle([0, 0, accent_w - 1, H - 1], fill=(17, 17, 17, 255))
-
-# Top shiny highlight (white fade, upper 35%)
-highlight_h = int(H * 0.35)
-for y in range(highlight_h):
-    alpha = int(50 * (1 - y / highlight_h))
-    draw.line([(accent_w, y), (W, y)], fill=(255, 255, 255, alpha))
 
 img.save(out)
 print('OK', img.size)
