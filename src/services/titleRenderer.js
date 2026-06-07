@@ -322,4 +322,123 @@ function renderHalftoneBg({ width, height, outPath, spacing = 6, radius = 1.0, a
   return outPath;
 }
 
-module.exports = { renderTitlePng, renderHalftoneBg, pickFont, pickEmojiFont };
+// =====================================================================
+// Subtitle PNG renderer — word-by-word color cycling + white glow
+// =====================================================================
+const PY_SUBTITLE_RENDERER = `
+import sys, json, unicodedata
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+cfg = json.loads(sys.argv[1])
+W      = max(1, int(cfg.get('width', 720)))
+H      = max(1, int(cfg.get('height', 120)))
+out    = cfg['out']
+words  = cfg.get('words', [])
+font_path = cfg['font_path']
+font_size = max(20, int(cfg.get('font_size', 52)))
+glow_color = tuple(cfg.get('glow_color', [255, 255, 255, 180]))
+glow_radius = int(cfg.get('glow_radius', 8))
+padding_x = int(cfg.get('padding_x', 24))
+
+try:
+    layout = ImageFont.Layout.RAQM
+except AttributeError:
+    layout = ImageFont.LAYOUT_RAQM if hasattr(ImageFont, 'LAYOUT_RAQM') else ImageFont.LAYOUT_BASIC
+
+try:
+    font = ImageFont.truetype(font_path, font_size, layout_engine=layout)
+except:
+    font = ImageFont.load_default()
+
+tmp = Image.new('RGBA', (10,10))
+draw_tmp = ImageDraw.Draw(tmp)
+space_w = draw_tmp.textbbox((0,0), ' ', font=font)[2]
+
+total_w = 0
+word_widths = []
+for i, w in enumerate(words):
+    bb = draw_tmp.textbbox((0,0), w['text'], font=font)
+    ww = bb[2] - bb[0]
+    word_widths.append(ww)
+    total_w += ww
+    if i < len(words) - 1:
+        total_w += space_w
+
+bb_ref = draw_tmp.textbbox((0,0), 'অআ', font=font)
+line_h = bb_ref[3] - bb_ref[1]
+canvas_h = max(H, line_h + glow_radius * 4 + 16)
+
+img = Image.new('RGBA', (W, canvas_h), (0,0,0,0))
+draw = ImageDraw.Draw(img)
+
+start_x = max(padding_x, (W - total_w) // 2)
+y = (canvas_h - line_h) // 2 - bb_ref[1]
+
+for i, w in enumerate(words):
+    color = tuple(w.get('color', [255,255,255,255]))
+    ww = word_widths[i]
+
+    glow_layer = Image.new('RGBA', (W, canvas_h), (0,0,0,0))
+    gd = ImageDraw.Draw(glow_layer)
+    gd.text((start_x, y), w['text'], font=font,
+            fill=(glow_color[0], glow_color[1], glow_color[2], glow_color[3]))
+    for _ in range(3):
+        glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=glow_radius // 2))
+    img = Image.alpha_composite(img, glow_layer)
+    draw = ImageDraw.Draw(img)
+
+    draw.text((start_x, y), w['text'], font=font, fill=color)
+    start_x += ww + space_w
+
+img.save(out)
+print('OK', img.size)
+`;
+
+const SUBTITLE_COLORS = [
+  [255, 230, 0,   255],  // yellow
+  [255, 255, 255, 255],  // white
+  [0,   255, 220, 255],  // cyan
+  [255, 140, 0,   255],  // orange
+  [180, 255, 80,  255],  // lime
+];
+
+function renderSubtitlePng({ text, width, height = 120, fontSize = 52, outPath, colorOffset = 0 }) {
+  const words = (text || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    spawnSync('python3', ['-c',
+      `from PIL import Image; Image.new('RGBA',(${Math.max(1, width)},${Math.max(1, height)}),(0,0,0,0)).save('${outPath}')`,
+    ], { encoding: 'utf8' });
+    return outPath;
+  }
+
+  const coloredWords = words.map((w, i) => ({
+    text: w,
+    color: SUBTITLE_COLORS[(colorOffset + i) % SUBTITLE_COLORS.length],
+  }));
+
+  const cfg = {
+    width:       Math.max(1, Math.round(width)),
+    height:      Math.max(1, Math.round(height)),
+    out:         outPath,
+    words:       coloredWords,
+    font_path:   pickFont('bold'),
+    font_size:   Math.max(20, Math.round(fontSize)),
+    glow_color:  [255, 255, 255, 160],
+    glow_radius: 10,
+    padding_x:   24,
+  };
+
+  const r = spawnSync('python3', ['-c', PY_SUBTITLE_RENDERER, JSON.stringify(cfg)], {
+    encoding: 'utf8',
+  });
+
+  if (r.status !== 0) {
+    throw new Error(`Subtitle render failed: ${r.stderr || r.stdout || 'python3 exited ' + r.status}`);
+  }
+  if (!fs.existsSync(outPath)) {
+    throw new Error('Subtitle render: output PNG not created');
+  }
+  return outPath;
+}
+
+module.exports = { renderTitlePng, renderHalftoneBg, renderSubtitlePng, pickFont, pickEmojiFont };
