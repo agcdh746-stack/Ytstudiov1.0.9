@@ -17,7 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { ffTime } = require('../utils/timestamp');
-const { renderTitlePng, renderHalftoneBg } = require('./titleRenderer');
+const { renderTitlePng, renderHalftoneBg, renderSubtitlePng } = require('./titleRenderer');
 
 const RUNNING = new Map();
 function trackProc(jobId, proc) {
@@ -77,6 +77,7 @@ async function makeClip({
   customHeaderText = '',
   followText = 'Follow Us',
   ducking = null,
+  subtitles = [],
 }) {
   const W = VIDEO_WIDTH;
   const H = VIDEO_HEIGHT;
@@ -293,6 +294,79 @@ async function makeClip({
   } else {
     videoChain.push(`${layer}null[v0]`);
   }
+
+  // ── Subtitle overlay ────────────────────────────────────────────────────────
+  // subtitles = [{ t: "00:00:02", text: "বাক্যটি এখানে" }, ...]
+  // Each line fades in (0.15s), stays visible, fades out (0.15s) before next.
+  // Position: bottom of video square, 16px above bottom edge.
+  if (Array.isArray(subtitles) && subtitles.length > 0) {
+    const SUBTITLE_FADE = 0.15;
+
+    function parseSubTs(ts) {
+      const parts = String(ts).trim().split(':');
+      if (parts.length === 3) return +parts[0] * 3600 + +parts[1] * 60 + +parts[2];
+      if (parts.length === 2) return +parts[0] * 60 + +parts[1];
+      return parseFloat(ts) || 0;
+    }
+
+    const subtitleFontSize = Math.max(32, Math.floor(videoSQ / 14));
+    const subtitleH = subtitleFontSize + 44;
+    const subtitleY = videoY + videoSQ - subtitleH - 16;
+    const subtitleW = W - 40;
+
+    jobLog.info(`📝 Rendering ${subtitles.length} subtitle line(s)…`);
+
+    let subLayer = '[v0]';
+
+    for (let si = 0; si < subtitles.length; si++) {
+      const sub = subtitles[si];
+      const subStart = parseSubTs(sub.t);
+      const rawEnd = si + 1 < subtitles.length
+        ? parseSubTs(subtitles[si + 1].t)
+        : duration;
+      const subEnd = Math.max(subStart + 0.5, rawEnd);
+
+      const subPng = path.join(workDir, `sub_${String(si).padStart(3, '0')}.png`);
+      renderSubtitlePng({
+        text:        sub.text || '',
+        width:       subtitleW,
+        height:      subtitleH,
+        fontSize:    subtitleFontSize,
+        outPath:     subPng,
+        colorOffset: si % 5,
+      });
+
+      inputs.push('-i', subPng);
+      const subIdx = idx++;
+
+      const fadeExpr =
+        `if(lt(t,${subStart.toFixed(3)}),0,` +
+        `if(lt(t,${(subStart + SUBTITLE_FADE).toFixed(3)}),` +
+          `(t-${subStart.toFixed(3)})/${SUBTITLE_FADE},` +
+        `if(lt(t,${(subEnd - SUBTITLE_FADE).toFixed(3)}),1,` +
+        `if(lt(t,${subEnd.toFixed(3)}),` +
+          `(${subEnd.toFixed(3)}-t)/${SUBTITLE_FADE},` +
+        `0))))`;
+
+      const subX = Math.floor((W - subtitleW) / 2);
+      const alphaLabel = `[salpha${si}]`;
+      const outLabel   = `[vsub${si}]`;
+
+      videoChain.push(
+        `[${subIdx}:v]scale=${subtitleW}:${subtitleH}:flags=lanczos,` +
+        `format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':` +
+        `a='${fadeExpr}*alpha(X,Y)'${alphaLabel}`
+      );
+      videoChain.push(
+        `${subLayer}${alphaLabel}overlay=${subX}:${subtitleY}:format=auto${outLabel}`
+      );
+      subLayer = outLabel;
+    }
+
+    // Rename final subtitle output back to [v0] for vignette step
+    videoChain.push(`${subLayer}null[v0]`);
+  }
+  // ── End subtitle overlay ────────────────────────────────────────────────────
 
   // Vignette (yellow_box only) — radial dark fade on corners
   if (titleStyle === 'yellow_box') {
