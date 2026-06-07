@@ -17,7 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { ffTime } = require('../utils/timestamp');
-const { renderTitlePng } = require('./titleRenderer');
+const { renderTitlePng, renderHalftoneBg } = require('./titleRenderer');
 
 const RUNNING = new Map();
 function trackProc(jobId, proc) {
@@ -251,7 +251,9 @@ async function makeClip({
   }
 
   // Title card background
-  layer = applyTitleBackground(videoChain, layer, titleStyle, styleConfig, W, titleY, titleBandH);
+  const htState = { idx };
+  layer = applyTitleBackground(videoChain, layer, titleStyle, styleConfig, W, titleY, titleBandH, { workDir, inputs, idx: htState });
+  idx = htState.idx;
 
   // Speaker bar background
   if (speakerPng) {
@@ -556,12 +558,18 @@ function getStyleConfig(titleStyle, W) {
   return configs[titleStyle] || configs.centered;
 }
 
-function applyTitleBackground(videoChain, layer, titleStyle, styleConfig, W, titleY, titleBandH) {
+function applyTitleBackground(videoChain, layer, titleStyle, styleConfig, W, titleY, titleBandH, { workDir = null, inputs = null, idx = null } = {}) {
   if (titleStyle === 'yellow_box') {
     const bm = 24, by2 = titleY + 12;
     const bw = W - 2 * bm, bh = titleBandH - 24;
+    // Black border
     videoChain.push(`${layer}drawbox=x=${bm - 3}:y=${by2 - 3}:w=${bw + 6}:h=${bh + 6}:color=black:t=fill[bb1]`);
-    videoChain.push(`[bb1]drawbox=x=${bm}:y=${by2}:w=${bw}:h=${bh}:color=0xFFD700:t=fill[bb2]`);
+    // Halftone PNG overlay (PIL-rendered static image, fast)
+    const htPng = path.join(workDir, 'halftone_bg.png');
+    renderHalftoneBg({ width: bw, height: bh, outPath: htPng });
+    inputs.push('-i', htPng);
+    const htIdx = idx.idx++;
+    videoChain.push(`[bb1][${htIdx}:v]overlay=${bm}:${by2}:format=auto[bb2]`);
     return '[bb2]';
   }
   if (titleStyle === 'natok_emotional' || titleStyle === 'natok_header_v1') {
