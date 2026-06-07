@@ -309,10 +309,11 @@ async function makeClip({
       return parseFloat(ts) || 0;
     }
 
-    const subtitleFontSize = Math.max(32, Math.floor(videoSQ / 14));
-    const subtitleH = subtitleFontSize + 44;
-    const subtitleY = videoY + videoSQ - subtitleH - 16;
-    const subtitleW = W - 40;
+    const subtitleFontSize = Math.max(32, Math.floor(videoSQ / 16));  // slightly smaller
+    const subtitleH = subtitleFontSize + 48;
+    const subtitleMarginX = 60;                                        // left/right margin
+    const subtitleW = W - subtitleMarginX * 2;
+    const subtitleY = videoY + videoSQ - subtitleH - 60;              // higher up, safe zone
 
     jobLog.info(`📝 Rendering ${subtitles.length} subtitle line(s)…`);
 
@@ -348,7 +349,7 @@ async function makeClip({
           `(${subEnd.toFixed(3)}-t)/${SUBTITLE_FADE},` +
         `0))))`;
 
-      const subX = Math.floor((W - subtitleW) / 2);
+      const subX = subtitleMarginX;  // left-aligned to margin
       const outLabel = `[vsub${si}]`;
 
       // overlay 'enable' expression — no geq/alpha needed, works on all FFmpeg versions
