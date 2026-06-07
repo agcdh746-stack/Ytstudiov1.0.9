@@ -263,4 +263,52 @@ function renderTitlePng(opts) {
   return outPath;
 }
 
-module.exports = { renderTitlePng, pickFont, pickEmojiFont };
+// =====================================================================
+// Halftone background PNG generator
+// Matches CSS: background:#F5C518 + radial-gradient dots 6px/1px
+// =====================================================================
+const PY_HALFTONE = `
+import sys, json
+from PIL import Image, ImageDraw
+
+cfg = json.loads(sys.argv[1])
+W = int(cfg['width'])
+H = int(cfg['height'])
+out = cfg['out']
+bg = tuple(cfg.get('bg', [245, 197, 24]))
+dot_color = tuple(cfg.get('dot_color', [0, 0, 0]))
+dot_opacity = cfg.get('dot_opacity', 0.18)
+spacing = int(cfg.get('spacing', 6))
+radius = float(cfg.get('radius', 1.0))
+
+img = Image.new('RGBA', (W, H), (*bg, 255))
+draw = ImageDraw.Draw(img)
+
+dot_fill = (
+    int(bg[0] * (1 - dot_opacity) + dot_color[0] * dot_opacity),
+    int(bg[1] * (1 - dot_opacity) + dot_color[1] * dot_opacity),
+    int(bg[2] * (1 - dot_opacity) + dot_color[2] * dot_opacity),
+    255
+)
+
+cx = spacing // 2
+while cx < W:
+    cy = spacing // 2
+    while cy < H:
+        draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], fill=dot_fill)
+        cy += spacing
+    cx += spacing
+
+img.save(out)
+print('OK', img.size)
+`;
+
+function renderHalftoneBg({ width, height, outPath, bg = [245, 197, 24], dotColor = [0, 0, 0], dotOpacity = 0.18, spacing = 6, radius = 1.0 }) {
+  const cfg = { width, height, out: outPath, bg, dot_color: dotColor, dot_opacity: dotOpacity, spacing, radius };
+  const r = spawnSync('python3', ['-c', PY_HALFTONE, JSON.stringify(cfg)], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`Halftone render failed: ${r.stderr || r.stdout}`);
+  if (!fs.existsSync(outPath)) throw new Error('Halftone render: output PNG not created');
+  return outPath;
+}
+
+module.exports = { renderTitlePng, renderHalftoneBg, pickFont, pickEmojiFont };
