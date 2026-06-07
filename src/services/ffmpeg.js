@@ -291,7 +291,26 @@ async function makeClip({
     const spkY2 = speakerY + Math.floor((speakerBandH - spkCanvasH) / 2);
     videoChain.push(`${layer}[${speakerIdx}:v]overlay=${spkX}:${spkY2}:format=auto[v]`);
   } else {
-    videoChain.push(`${layer}null[v]`);
+    videoChain.push(`${layer}null[v0]`);
+  }
+
+  // Vignette (yellow_box only) — radial dark fade on corners
+  if (titleStyle === 'yellow_box') {
+    videoChain.push(
+      `[v0]geq=` +
+      `r='r(X,Y)*min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4)+` +
+        `r(X,Y)*(1-min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4))*0.4':` +
+      `g='g(X,Y)*min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4)+` +
+        `g(X,Y)*(1-min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4))*0.4':` +
+      `b='b(X,Y)*min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4)+` +
+        `b(X,Y)*(1-min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4))*0.4'[v1]`
+    );
+    // Progress bar — 3px gold line grows left to right
+    videoChain.push(
+      `[v1]drawbox=x=0:y=${H - 3}:w='min(iw\,t/${duration}*iw)':h=3:color=0xFFD700@0.9:t=fill[v]`
+    );
+  } else {
+    videoChain.push(`[v0]null[v]`);
   }
 
   // Audio mixing / ducking
@@ -564,8 +583,8 @@ function applyTitleBackground(videoChain, layer, titleStyle, styleConfig, W, tit
     const bw = W - 2 * bm, bh = titleBandH - 24;
     // Black border
     videoChain.push(`${layer}drawbox=x=${bm - 3}:y=${by2 - 3}:w=${bw + 6}:h=${bh + 6}:color=black:t=fill[bb1]`);
-    // Halftone PNG overlay (PIL-rendered static image, fast)
-    const htPng = path.join(workDir, 'halftone_bg.png');
+    // Pro title bg: gradient + halftone + accent + highlight (PIL, once)
+    const htPng = path.join(workDir, 'title_bg.png');
     renderHalftoneBg({ width: bw, height: bh, outPath: htPng });
     inputs.push('-i', htPng);
     const htIdx = idx.idx++;
