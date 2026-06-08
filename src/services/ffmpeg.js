@@ -461,12 +461,13 @@ async function makeClip({
       t.split(/\r?\n/).forEach(l => l && jobLog.info(`ffmpeg> ${l.trim()}`));
     });
     proc.on('error', reject);
-    proc.on('close', code => {
+    proc.on('close', (code, signal) => {
       if (code === 0) {
         jobLog.info(`ffmpeg done: ${path.basename(output)}`);
         resolve(output);
       } else {
-        reject(new Error(`ffmpeg exited ${code}: ${lastErr.slice(-500)}`));
+        const reason = signal ? `killed by signal ${signal}` : `exited code ${code}`;
+        reject(new Error(`ffmpeg ${reason}: ${lastErr.slice(-500)}`));
       }
     });
   });
@@ -498,10 +499,13 @@ function concatClips(inputs, output, jobLog, jobId) {
       t.split(/\r?\n/).forEach(l => l && jobLog.info(`ffmpeg> ${l.trim()}`));
     });
     proc.on('error', reject);
-    proc.on('close', code => {
+    proc.on('close', (code, signal) => {
       try { fs.unlinkSync(listFile); } catch (_) {}
       if (code === 0) resolve(output);
-      else reject(new Error(`ffmpeg concat exited ${code}: ${lastErr.slice(-500)}`));
+      else {
+        const reason = signal ? `killed by signal ${signal}` : `exited code ${code}`;
+        reject(new Error(`ffmpeg concat ${reason}: ${lastErr.slice(-500)}`));
+      }
     });
   });
 }
