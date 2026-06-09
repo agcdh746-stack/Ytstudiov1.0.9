@@ -156,7 +156,7 @@ function createJob(payload) {
       return {
         index: i,
         title: c.title || `Clip ${i + 1}`,
-        range: ranges[0] || '',
+        range: ranges || '',
         ranges: ranges.length > 1 ? ranges : undefined,
         recap: ranges.length > 1,
         style: VALID_STYLES.has(c.style) ? c.style : defaultStyle,
@@ -180,33 +180,52 @@ function checkAborted(id) {
   return aborted.has(id) || !jobs[id];
 }
 
+// ── UPDATED FUNCTION ────────────────────────────────────────────────
 function downloadMusic(job, jl) {
   if (!job.musicUrl) return null;
   try {
     const musicOut = path.join(TEMP_DIR, `${job.id}_music.%(ext)s`);
     fs.mkdirSync(path.dirname(musicOut), { recursive: true });
     jl.info(`🎵 Downloading music: ${job.musicUrl}`);
-    execFileSync('yt-dlp', [
+
+    const args = [
       '-x', '--audio-format', 'm4a',
-      '-o', musicOut,
+      '--audio-quality', '0',
       '--no-playlist',
       '--no-warnings',
-      job.musicUrl,
-    ], { stdio: 'ignore', timeout: 120000 });
+      '--retries', '5',
+      '--socket-timeout', '60',
+      '--geo-bypass',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    ];
 
-    const dir = path.dirname(musicOut);
+    if (process.env.YTDLP_PROXY) {
+      args.push('--proxy', process.env.YTDLP_PROXY);
+      jl.info(`✓ music proxy: ${process.env.YTDLP_PROXY}`);
+    }
+
+    args.push('-o', musicOut, job.musicUrl);
+
+    execFileSync('yt-dlp', args, {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      timeout: 120000,
+    });
+
+    const dir  = path.dirname(musicOut);
     const base = path.basename(musicOut, '.%(ext)s');
-    const hit = fs.readdirSync(dir).find(f => f.startsWith(base + '.'));
+    const hit  = fs.readdirSync(dir).find(f => f.startsWith(base + '.'));
     if (hit) {
       const full = path.join(dir, hit);
       jl.info(`✓ Music downloaded: ${full}`);
       return full;
     }
+    jl.warn(`⚠ Music file not found after download`);
   } catch (e) {
-    jl.warn(`Music download failed (continuing without music): ${e.message}`);
+    jl.warn(`Music download failed: ${e.message}`);
   }
   return null;
 }
+// ─────────────────────────────────────────────────────────────────────
 
 async function runJob(id) {
   const job = jobs[id];
@@ -238,7 +257,7 @@ async function runJob(id) {
         clip.ranges = ranges;
         clip.recap = true;
       }
-      clip.range = ranges[0] || clip.range || '';
+      clip.range = ranges || clip.range || '';
       const idxs = [];
       for (const r of ranges) {
         idxs.push(clipRanges.length);
@@ -256,7 +275,7 @@ async function runJob(id) {
 
     if (checkAborted(id)) { jl.warn('Job aborted by user — stopping after download.'); return; }
 
-    job.sourcePath = dl.sources[0] && dl.sources[0].sourcePath;
+    job.sourcePath = dl.sources && dl.sources.sourcePath;
     jl.info(`✅ Download complete (mode=${dl.mode}); ${dl.sources.filter(s => s.sourcePath).length}/${dl.sources.length} sources ready`);
 
     job.status = 'clipping';
@@ -277,7 +296,7 @@ async function runJob(id) {
         clip.status = partRanges.length > 1 ? 'rendering_recap' : 'rendering';
         saveStore();
 
-        jl.info(`🎬 Clip ${clip.index + 1}: ${partRanges.length > 1 ? `recap mode (${partRanges.length} ranges)` : partRanges[0]}`);
+        jl.info(`🎬 Clip ${clip.index + 1}: ${partRanges.length > 1 ? `recap mode (${partRanges.length} ranges)` : partRanges}`);
 
         for (let partNo = 0; partNo < partRanges.length; partNo++) {
           if (checkAborted(id)) { jl.warn('Job aborted during recap render.'); return; }
