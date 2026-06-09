@@ -68,22 +68,18 @@ function buildCommonArgs(jobLog) {
     '--add-header', 'Origin:https://www.youtube.com',
   ];
 
-  // SOCKS5 + HLS keepalive fix: prefer ffmpeg downloader, single connection
+  // Both SOCKS5 and direct: parallel chunking (same as bulk v3.0.5)
+  // Bulk confirmed -N 4 + 10M chunks works fine over VMess/SOCKS5 tunnel
+  args.push(
+    '--hls-prefer-native',
+    '--concurrent-fragments', '4',
+    '-N', '4',
+    '--http-chunk-size', '10M',
+  );
   if (isSocks) {
-    args.push(
-      '--hls-prefer-ffmpeg',
-      '--concurrent-fragments', '1',
-      '-N', '1',
-      '--no-part',
-    );
-    if (jobLog) jobLog.info('🔧 SOCKS5 mode: using ffmpeg HLS downloader, single fragment');
+    if (jobLog) jobLog.info('🔧 VMess/SOCKS5 mode: parallel chunking (4 connections, 10M chunks)');
   } else {
-    args.push(
-      '--hls-prefer-native',
-      '--concurrent-fragments', '4',
-      '-N', '4',
-      '--http-chunk-size', '10M',
-    );
+    if (jobLog) jobLog.info('🔧 Direct mode: parallel chunking (4 connections, 10M chunks)');
   }
 
   // Deno JS runtime — required for yt-dlp 2025.11+ JS challenge
