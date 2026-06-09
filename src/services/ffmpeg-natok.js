@@ -294,7 +294,11 @@ async function makeClip({
   }
 
   // Audio mixing / ducking
-  let audioMap = '0:a?';
+  // Voice enhancement: highpass removes low-freq bg music rumble,
+  // speechnorm + dynaudnorm boost dialogue clarity
+  const VOICE_ENHANCE = `highpass=f=180,speechnorm=e=12.5:r=0.0001:l=1,dynaudnorm=f=150:g=15`;
+
+  let audioMap = `0:a?`;
   if (hasMusicFile) {
     const duck = ducking && ducking.enabled ? {
       enabled: true,
@@ -305,20 +309,27 @@ async function makeClip({
     } : null;
 
     if (duck) {
+      // Fix: asplit voice into two streams — one for sidechain trigger, one for final mix
+      // Previously [0:a] was used twice which silently broke ducking in FFmpeg
       videoChain.push(
+        `[0:a]${VOICE_ENHANCE},asplit=2[voice1][voice2]`,
         `[${musicIdx}:a]volume=${musicVolume}[mbase]`,
-        `[mbase][0:a]sidechaincompress=threshold=${duck.threshold}:ratio=${duck.ratio}:release=${duck.release}:attack=${duck.attack}[musicduck]`,
-        `[0:a][musicduck]amix=inputs=2:duration=first:dropout_transition=2[aout]`
+        `[mbase][voice1]sidechaincompress=threshold=${duck.threshold}:ratio=${duck.ratio}:release=${duck.release}:attack=${duck.attack}[musicduck]`,
+        `[voice2][musicduck]amix=inputs=2:duration=first:dropout_transition=2[aout]`
       );
       audioMap = '[aout]';
     } else {
       videoChain.push(
-        `[0:a]volume=1.0[va]`,
+        `[0:a]${VOICE_ENHANCE}[va]`,
         `[${musicIdx}:a]volume=${musicVolume}[ma]`,
         `[va][ma]amix=inputs=2:duration=first:dropout_transition=2[aout]`
       );
       audioMap = '[aout]';
     }
+  } else {
+    // No external music — still enhance voice clarity
+    videoChain.push(`[0:a]${VOICE_ENHANCE}[aout]`);
+    audioMap = '[aout]';
   }
 
   const filterComplex = videoChain.join(';');
