@@ -78,7 +78,12 @@ function buildCommonArgs(jobLog) {
     );
     if (jobLog) jobLog.info('🔧 SOCKS5 mode: using ffmpeg HLS downloader, single fragment');
   } else {
-    args.push('--hls-prefer-native', '--concurrent-fragments', '4');
+    args.push(
+      '--hls-prefer-native',
+      '--concurrent-fragments', '4',
+      '-N', '4',
+      '--http-chunk-size', '10M',
+    );
   }
 
   // Deno JS runtime — required for yt-dlp 2025.11+ JS challenge
