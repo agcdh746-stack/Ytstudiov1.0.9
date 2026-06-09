@@ -630,8 +630,10 @@ function applyColorGrade(videoChain, grade) {
 
   let filter = '';
   if (grade === 'warm') {
-    filter = `eq=saturation=1.25:contrast=1.08:brightness=0.02:gamma_r=1.12:gamma_b=0.88`;
+    // আপনার ইমেজের সিনেমাটিক লুক (Warm highlights + Teal shadows)
+    filter = `eq=saturation=1.45:contrast=1.12:brightness=-0.02,colorlevels=rimax=0.9:gimax=1.0:bimax=1.0:romin=0.02:gomin=0.05:bomin=0.08`;
   } else if (grade === 'cool') {
+    // কুল লুকের কোড
     filter = `eq=saturation=0.88:contrast=1.1:brightness=-0.02:gamma_r=0.90:gamma_b=1.12`;
   } else if (grade === 'cinema') {
     filter = `eq=saturation=0.82:contrast=1.18:brightness=-0.04:gamma=0.92`;
@@ -641,6 +643,10 @@ function applyColorGrade(videoChain, grade) {
     videoChain.push('[sq]null[graded]');
     return 'graded';
   }
+
+  videoChain.push(`[sq]${filter}[graded]`);
+  return 'graded';
+}
 
   videoChain.push(`[sq]${filter}[graded]`);
   return 'graded';
