@@ -648,8 +648,4 @@ function applyColorGrade(videoChain, grade) {
   return 'graded';
 }
 
-  videoChain.push(`[sq]${filter}[graded]`);
-  return 'graded';
-}
-
 module.exports = { makeClip, concatClips, FFMPEG_MODULE_VERSION, killJob };
