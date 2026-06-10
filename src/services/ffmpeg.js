@@ -720,4 +720,4 @@ function applyColorGrade(videoChain, grade) {
   return 'graded';
 }
 
-module.exports = { makeClip, concatClips, FFMPEG_MODULE_VERSION, killJob };
+module.exports = { makeClip, concatClips, FFMPEG_MODULE_VERSION, killJob, __RUNNING__: RUNNING };
