@@ -112,7 +112,7 @@ const VALID_STYLES = new Set([
   'natok_purple', 'natok_gold2', 'natok_green',
 ]);
 const VALID_CROPS  = new Set(['crop', 'fit']);
-const VALID_GRADES = new Set(['none', 'warm', 'cool', 'cinema']);
+const VALID_GRADES = new Set(['none', 'warm', 'cool', 'cinema', 'bright', 'natural']);
 
 function buildDucking(payload) {
   const d = payload && typeof payload === 'object' ? payload : {};
@@ -151,6 +151,8 @@ function createJob(payload) {
   const partial      = payload.partial !== false;
   const musicUrl     = payload.musicUrl || null;
   const musicVolume  = clamp(payload.musicVolume, 0, 1, 0.15);
+  const musicStart   = clamp(payload.musicStart, 0, 86400, 0);
+  const musicEnd     = clamp(payload.musicEnd, 0, 86400, 0);
   const ducking      = buildDucking(payload.ducking);
 
   // Thumbnail card injection (mid-frame, ~0.004s, used as YT thumbnail).
@@ -174,6 +176,8 @@ function createJob(payload) {
     partial,
     musicUrl,
     musicVolume,
+    musicStart,
+    musicEnd,
     ducking,
     thumbnailCard,
     musicPath: null,
@@ -318,6 +322,8 @@ async function runJob(id) {
             colorGrade: job.colorGrade || 'none',
             musicFile: job.musicPath || null,
             musicVolume: job.musicVolume || 0.15,
+            musicStart: job.musicStart || 0,
+            musicEnd: job.musicEnd || 0,
             output: partOut,
             workDir: path.join(TEMP_DIR, id),
             jobLog: jl,
