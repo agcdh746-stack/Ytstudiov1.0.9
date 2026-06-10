@@ -73,6 +73,8 @@ async function makeClip({
   colorGrade = 'none',
   musicFile = null,
   musicVolume = 0.15,
+  musicStart = 0,
+  musicEnd = 0,
   output, workDir, jobLog, jobId,
   customHeaderText = '',
   followText = 'Follow Us',
@@ -203,6 +205,10 @@ async function makeClip({
     micIdx = idx++;
   }
   if (hasMusicFile) {
+    const mStart = Math.max(0, Number(musicStart) || 0);
+    const mEnd   = Number(musicEnd) || 0;
+    if (mStart > 0) inputs.push('-ss', ffTime(mStart));
+    if (mEnd > mStart) inputs.push('-t', ffTime(mEnd - mStart));
     inputs.push('-stream_loop', '-1', '-i', musicFile);
     musicIdx = idx++;
   }
@@ -369,20 +375,10 @@ async function makeClip({
   }
   // ── End subtitle overlay ────────────────────────────────────────────────────
 
-  // Vignette (yellow_box only) — radial dark fade on corners
+  // Progress bar — 3px gold line grows left to right (yellow_box only). Vignette removed.
   if (titleStyle === 'yellow_box') {
     videoChain.push(
-      `[v0]geq=` +
-      `r='r(X,Y)*min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4)+` +
-        `r(X,Y)*(1-min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4))*0.4':` +
-      `g='g(X,Y)*min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4)+` +
-        `g(X,Y)*(1-min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4))*0.4':` +
-      `b='b(X,Y)*min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4)+` +
-        `b(X,Y)*(1-min(1,(X/${W/2.0})*(1-X/${W})*4)*min(1,(Y/${H/2.0})*(1-Y/${H})*4))*0.4'[v1]`
-    );
-    // Progress bar — 3px gold line grows left to right
-    videoChain.push(
-      `[v1]drawbox=x=0:y=${H - 3}:w='min(iw\,t/${duration}*iw)':h=3:color=0xFFD700@0.9:t=fill[v]`
+      `[v0]drawbox=x=0:y=${H - 3}:w='min(iw\,t/${duration}*iw)':h=3:color=0xFFD700@0.9:t=fill[v]`
     );
   } else {
     videoChain.push(`[v0]null[v]`);
@@ -714,6 +710,10 @@ function applyColorGrade(videoChain, grade) {
     filter = `curves=red='0/0 0.5/0.44 1/0.92':green='0/0 0.5/0.50 1/1':blue='0/0 0.5/0.58 1/1.0',eq=saturation=0.9:contrast=1.08:brightness=-0.03`;
   } else if (grade === 'cinema') {
     filter = `curves=all='0/0.05 0.5/0.5 1/0.95',eq=saturation=0.85:contrast=1.15:gamma=0.95`;
+  } else if (grade === 'bright') {
+    filter = `eq=brightness=0.06:contrast=1.08:saturation=1.1:gamma=0.92`;
+  } else if (grade === 'natural') {
+    filter = `eq=brightness=0.02:contrast=1.03:saturation=1.05:gamma=0.98`;
   }
 
   videoChain.push(`[sq]${filter}[graded]`);
