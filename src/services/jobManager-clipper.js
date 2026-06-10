@@ -13,11 +13,11 @@
 const { v4: uuid } = require('uuid');
 const path = require('path');
 const fs = require('fs');
-const { execFileSync } = require('child_process');
 const { logger } = require('../utils/logger');
 const { parseRange } = require('../utils/timestamp');
-const { downloadVideo, killJob: killYtdlpJob } = require('./ytdlp-clipper');
-const { makeClip, concatClips, killJob: killFfmpegJob } = require('./ffmpeg');
+const { downloadVideo, killJob: killYtdlpJob, buildCommonArgs } = require('./ytdlp-clipper');
+const ffmpegMod = require('./ffmpeg');
+const { makeClip, concatClips, killJob: killFfmpegJob } = ffmpegMod;
 const { injectThumbnailCard, killJob: killThumbJob } = require('./ffmpeg-thumbnail');
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/app/data/output';
@@ -42,12 +42,30 @@ function enqueueJob(id) {
 
 function _drainQueue() {
   if (_queueRunning || !_queue.length) return;
+  // Skip any queued jobs that were aborted before they started
+  while (_queue.length && aborted.has(_queue[0].id)) {
+    const { id, resolve } = _queue.shift();
+    logger.info(`[job:${id}] skipped from queue (already aborted)`);
+    resolve();
+  }
+  if (!_queue.length) return;
   _queueRunning = true;
   const { id, resolve, reject } = _queue.shift();
   runJob(id).then(resolve, reject).finally(() => {
     _queueRunning = false;
     _drainQueue();
   });
+}
+
+// Remove a job from the waiting queue without running it
+function _removeFromQueue(id) {
+  const idx = _queue.findIndex(e => e.id === id);
+  if (idx !== -1) {
+    const { resolve } = _queue.splice(idx, 1)[0];
+    resolve(); // resolve so the enqueueJob Promise doesn't hang
+    return true;
+  }
+  return false;
 }
 // ────────────────────────────────────────────────────────────────────
 
@@ -215,30 +233,55 @@ function checkAborted(id) {
 
 function downloadMusic(job, jl) {
   if (!job.musicUrl) return null;
-  try {
+  return new Promise((resolve) => {
+    if (aborted.has(job.id)) { resolve(null); return; }
     const musicOut = path.join(TEMP_DIR, `${job.id}_music.%(ext)s`);
-    fs.mkdirSync(path.dirname(musicOut), { recursive: true });
+    try { fs.mkdirSync(path.dirname(musicOut), { recursive: true }); } catch (_) {}
     jl.info(`🎵 Downloading music: ${job.musicUrl}`);
-    execFileSync('yt-dlp', [
+    const { spawn: sp } = require('child_process');
+    const musicArgs = [
+      ...buildCommonArgs(jl),
       '-x', '--audio-format', 'm4a',
       '-o', musicOut,
-      '--no-playlist',
-      '--no-warnings',
       job.musicUrl,
-    ], { stdio: 'ignore', timeout: 120000 });
+    ];
+    const proc = sp('yt-dlp', musicArgs, { stdio: 'ignore' });
 
-    const dir = path.dirname(musicOut);
-    const base = path.basename(musicOut, '.%(ext)s');
-    const hit = fs.readdirSync(dir).find(f => f.startsWith(base + '.'));
-    if (hit) {
-      const full = path.join(dir, hit);
-      jl.info(`✓ Music downloaded: ${full}`);
-      return full;
+    // Register with ffmpeg's RUNNING map so killJob can reach it
+    const RUNNING_MAP = ffmpegMod.__RUNNING__;
+    if (RUNNING_MAP) {
+      if (!RUNNING_MAP.has(job.id)) RUNNING_MAP.set(job.id, new Set());
+      RUNNING_MAP.get(job.id).add(proc);
+      proc.on('close', () => {
+        const s = RUNNING_MAP.get(job.id);
+        if (s) { s.delete(proc); if (!s.size) RUNNING_MAP.delete(job.id); }
+      });
     }
-  } catch (e) {
-    jl.warn(`Music download failed (continuing without music): ${e.message}`);
-  }
-  return null;
+
+    const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch(_){} }, 120000);
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (aborted.has(job.id)) { resolve(null); return; }
+      const dir = path.dirname(musicOut);
+      const base = path.basename(musicOut, '.%(ext)s');
+      try {
+        const hit = fs.readdirSync(dir).find(f => f.startsWith(base + '.'));
+        if (hit) {
+          const full = path.join(dir, hit);
+          jl.info(`✓ Music downloaded: ${full}`);
+          resolve(full);
+          return;
+        }
+      } catch (_) {}
+      jl.warn('Music download failed or aborted (continuing without music)');
+      resolve(null);
+    });
+    proc.on('error', (e) => {
+      clearTimeout(timer);
+      jl.warn(`Music download error (continuing without music): ${e.message}`);
+      resolve(null);
+    });
+  });
 }
 
 async function runJob(id) {
@@ -250,7 +293,7 @@ async function runJob(id) {
   saveStore();
 
   try {
-    job.musicPath = downloadMusic(job, jl);
+    job.musicPath = await downloadMusic(job, jl);
 
     const rangeMap = [];
     const clipRanges = [];
@@ -412,6 +455,7 @@ function deleteJob(id) {
   if (!j) return false;
 
   aborted.add(id);
+  _removeFromQueue(id); // cancel if still waiting in queue
   const ytKilled    = killYtdlpJob(id);
   const ffKilled    = killFfmpegJob ? killFfmpegJob(id) : 0;
   const thumbKilled = killThumbJob ? killThumbJob(id) : 0;
