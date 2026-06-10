@@ -349,5 +349,6 @@ module.exports = {
   STRATEGIES,
   detectDeno,
   detectProxyType,
+  buildCommonArgs,
   killJob,
 };
