@@ -28,7 +28,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-// Audio multer — larger limit (50MB WAV)
+// Audio multer — larger limit (150MB WAV/MP3)
 const audioStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, AUDIO_DIR),
   filename:    (_req, file, cb) => {
@@ -44,7 +44,6 @@ router.post('/upload-srt', upload.single('srt'), (req, res) => {
 });
 
 // ── POST /api/jobs/subburner/upload-audio ─────────────────────────────────────
-// Frontend uploads generated WAV; returns server path for Python to use
 router.post('/upload-audio', audioUpload.single('audio'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'audio file required' });
   res.json({ ok: true, audioPath: req.file.path, originalName: req.file.originalname });
@@ -57,7 +56,15 @@ router.post('/', (req, res) => {
       videoUrl, referer, srtPath, preset, crop169,
       mode, title, clips, targets,
       sources, recapMerge,           // recap mode fields
-      sr_timestamps, sr_audio_path, sr_atempo, sr_drive_folder,  // screenshot_recap fields
+
+      // New common fields
+      colorGrade, subPos, fontSize,  // color grading, subtitle position, font size
+      bgm,                           // {url, start, end, volume} background music
+      driveFolder,                   // Google Drive folder URL (all modes)
+
+      // screenshot_recap fields
+      sr_timestamps, sr_audio_path, sr_atempo, sr_drive_folder,
+      sr_kb_effect, sr_ss_quality, sr_bgm,
     } = req.body || {};
 
     if (mode === 'recap') {
@@ -75,7 +82,6 @@ router.post('/', (req, res) => {
         return res.status(400).json({ error: 'sr_audio_path required for screenshot_recap mode' });
       if (!fs.existsSync(sr_audio_path))
         return res.status(400).json({ error: `sr_audio_path not found: ${sr_audio_path}` });
-      // videoUrl required to take screenshots from
       if (!videoUrl && (!Array.isArray(sources) || !sources.length))
         return res.status(400).json({ error: 'videoUrl or sources[] required for screenshot_recap' });
     } else {
@@ -90,7 +96,19 @@ router.post('/', (req, res) => {
     const job = createJob({
       videoUrl, referer, srtPath: srtPath || null, preset, crop169,
       mode, title, clips, targets, sources, recapMerge,
+
+      // New common fields
+      colorGrade: colorGrade || 'natural',
+      subPos:     subPos     || 'bottom',
+      fontSize:   fontSize   || 38,
+      bgm:        bgm        || null,
+      driveFolder: driveFolder || '',
+
+      // screenshot_recap fields
       sr_timestamps, sr_audio_path, sr_atempo, sr_drive_folder,
+      sr_kb_effect: sr_kb_effect || 'random',
+      sr_ss_quality: sr_ss_quality || '2',
+      sr_bgm: sr_bgm || null,
     });
     res.json({ ok: true, jobId: job.id, job });
   } catch (e) {
