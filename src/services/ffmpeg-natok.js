@@ -795,11 +795,11 @@ function applyColorGrade(videoChain, grade) {
 
   let filter = '';
   if (grade === 'warm') {
-    // আপনার ইমেজের সিনেমাটিক লুক (Warm highlights + Teal shadows)
-    filter = `eq=saturation=1.45:contrast=1.12:brightness=-0.02,colorlevels=rimax=0.9:gimax=1.0:bimax=1.0:romin=0.02:gomin=0.05:bomin=0.08`;
+    // Hollywood warm grade — skin orange-amber push, background teal, shadows crushed
+    filter = `eq=saturation=1.3:contrast=1.22:brightness=-0.05:gamma_r=1.08:gamma_b=0.88,colorlevels=romin=0.04:gomin=0.02:bomin=0.0:rimax=0.96:gimax=0.94:bimax=0.88`;
   } else if (grade === 'cool') {
-    // কুল লুকের কোড
-    filter = `eq=saturation=0.88:contrast=1.1:brightness=-0.02:gamma_r=0.90:gamma_b=1.12`;
+    // Korean/Japanese drama cool grade — blue-cyan dominance, muted, dreamy, lifted shadows
+    filter = `eq=saturation=0.65:contrast=1.08:brightness=0.04:gamma_r=0.88:gamma_b=1.18,colorlevels=romin=0.0:gomin=0.04:bomin=0.12:rimax=0.88:gimax=0.92:bimax=1.0`;
   } else if (grade === 'cinema') {
     filter = `eq=saturation=0.82:contrast=1.18:brightness=-0.04:gamma=0.92`;
   } else if (grade === 'vivid') {
