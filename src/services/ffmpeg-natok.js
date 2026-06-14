@@ -369,13 +369,32 @@ async function makeClip({
 
   const gradedSq = applyColorGrade(videoChain, colorGrade);
 
+  // ── Mr Beast style punch zoom (5s cycle: 3s zoom-in 1.00→1.05, 2s zoom-out 1.05→1.00) ──
+  const ZOOM_FPS    = 30;
+  const ZOOM_CYCLE  = ZOOM_FPS * 5;   // 150 frames = 5s
+  const ZOOM_IN_F   = ZOOM_FPS * 3;   // 90 frames = 3s zoom-in
+  const ZOOM_MIN    = 1.0;
+  const ZOOM_MAX    = 1.05;
+  // phase = frame position within the 5s cycle (0..149)
+  const zoomExpr =
+    `if(lt(mod(on,${ZOOM_CYCLE}),${ZOOM_IN_F}),` +
+      `${ZOOM_MIN}+(${ZOOM_MAX}-${ZOOM_MIN})*(mod(on,${ZOOM_CYCLE})/${ZOOM_IN_F}),` +
+      `${ZOOM_MAX}-(${ZOOM_MAX}-${ZOOM_MIN})*((mod(on,${ZOOM_CYCLE})-${ZOOM_IN_F})/(${ZOOM_CYCLE}-${ZOOM_IN_F}))` +
+    `)`;
+  videoChain.push(
+    `[${gradedSq}]zoompan=z='${zoomExpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':` +
+    `d=1:s=${videoSQ}x${videoSQ}:fps=${ZOOM_FPS}[zoomed]`
+  );
+  const zoomedSq = 'zoomed';
+  // ─────────────────────────────────────────────────────────────────────
+
   const dCeil = Math.max(1, Math.ceil(duration));
   const bgFilter = styleConfig.bgFilter
     ? styleConfig.bgFilter(W, H, dCeil, duration)
     : `color=c=black:s=${W}x${H}:r=30:d=${dCeil},trim=duration=${duration},setpts=PTS-STARTPTS`;
 
   videoChain.push(`${bgFilter}[bg]`);
-  videoChain.push(`[bg][${gradedSq}]overlay=0:${videoY}[base]`);
+  videoChain.push(`[bg][${zoomedSq}]overlay=0:${videoY}[base]`);
   let layer = '[base]';
 
   // Optional header bar
