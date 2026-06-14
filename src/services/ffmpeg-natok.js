@@ -73,6 +73,8 @@ async function makeClip({
   colorGrade = 'none',
   musicFile = null,
   musicVolume = 0.15,
+  musicStart = 0,
+  musicEnd = 0,
   output, workDir, jobLog, jobId,
   customHeaderText = '',
   followText = 'Follow Us',
@@ -205,6 +207,8 @@ async function makeClip({
   if (hasMusicFile) {
     inputs.push('-stream_loop', '-1', '-i', musicFile);
     musicIdx = idx++;
+    // If musicStart/musicEnd specified, trim music using atrim in filtergraph
+    // (handled later in audio mixing section)
   }
 
   const videoChain = [];
@@ -300,6 +304,17 @@ async function makeClip({
 
   let audioMap = `0:a?`;
   if (hasMusicFile) {
+    // Build music trim filter if start/end specified
+    const hasTrim = musicStart > 0 || musicEnd > 0;
+    let musicSrc;
+    if (hasTrim) {
+      const trimEnd = musicEnd > 0 ? `:end=${musicEnd}` : '';
+      videoChain.push(`[${musicIdx}:a]atrim=start=${musicStart}${trimEnd},asetpts=PTS-STARTPTS[mraw]`);
+      musicSrc = '[mraw]';
+    } else {
+      musicSrc = `[${musicIdx}:a]`;
+    }
+
     const duck = ducking && ducking.enabled ? {
       enabled: true,
       threshold: clamp(ducking.threshold, 0.001, 1, 0.03),
@@ -313,7 +328,7 @@ async function makeClip({
       // Previously [0:a] was used twice which silently broke ducking in FFmpeg
       videoChain.push(
         `[0:a]${VOICE_ENHANCE},asplit=2[voice1][voice2]`,
-        `[${musicIdx}:a]volume=${musicVolume}[mbase]`,
+        `${musicSrc}volume=${musicVolume}[mbase]`,
         `[mbase][voice1]sidechaincompress=threshold=${duck.threshold}:ratio=${duck.ratio}:release=${duck.release}:attack=${duck.attack}[musicduck]`,
         `[voice2][musicduck]amix=inputs=2:duration=first:dropout_transition=2[aout]`
       );
@@ -321,7 +336,7 @@ async function makeClip({
     } else {
       videoChain.push(
         `[0:a]${VOICE_ENHANCE}[va]`,
-        `[${musicIdx}:a]volume=${musicVolume}[ma]`,
+        `${musicSrc}volume=${musicVolume}[ma]`,
         `[va][ma]amix=inputs=2:duration=first:dropout_transition=2[aout]`
       );
       audioMap = '[aout]';
@@ -370,14 +385,22 @@ async function makeClip({
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     if (jobId) trackProc(jobId, proc);
     let lastErr = '';
+    // Timeout: max(300s, duration*8) — kills stuck FFmpeg and rejects
+    const timeoutMs = Math.max(300, duration * 8) * 1000;
+    const timer = setTimeout(() => {
+      jobLog.warn(`⏰ FFmpeg timeout after ${Math.round(timeoutMs/1000)}s — killing stuck process`);
+      try { proc.kill('SIGKILL'); } catch (_) {}
+      reject(new Error(`ffmpeg timeout after ${Math.round(timeoutMs/1000)}s`));
+    }, timeoutMs);
     proc.stdout.on('data', d => d.toString().split(/\r?\n/).forEach(l => l && jobLog.info(`ffmpeg> ${l}`)));
     proc.stderr.on('data', d => {
       const t = d.toString();
       lastErr += t;
       t.split(/\r?\n/).forEach(l => l && jobLog.info(`ffmpeg> ${l.trim()}`));
     });
-    proc.on('error', reject);
+    proc.on('error', (e) => { clearTimeout(timer); reject(e); });
     proc.on('close', code => {
+      clearTimeout(timer);
       if (code === 0) {
         jobLog.info(`ffmpeg done: ${path.basename(output)}`);
         resolve(output);
