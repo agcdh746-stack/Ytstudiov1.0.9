@@ -450,14 +450,22 @@ async function makeClip({
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     if (jobId) trackProc(jobId, proc);
     let lastErr = '';
+    // Timeout: max(300s, duration*8) — kills stuck FFmpeg and rejects
+    const timeoutMs = Math.max(300, duration * 8) * 1000;
+    const timer = setTimeout(() => {
+      jobLog.warn(`⏰ FFmpeg timeout after ${Math.round(timeoutMs/1000)}s — killing stuck process`);
+      try { proc.kill('SIGKILL'); } catch (_) {}
+      reject(new Error(`ffmpeg timeout after ${Math.round(timeoutMs/1000)}s`));
+    }, timeoutMs);
     proc.stdout.on('data', d => d.toString().split(/\r?\n/).forEach(l => l && jobLog.info(`ffmpeg> ${l}`)));
     proc.stderr.on('data', d => {
       const t = d.toString();
       lastErr += t;
       t.split(/\r?\n/).forEach(l => l && jobLog.info(`ffmpeg> ${l.trim()}`));
     });
-    proc.on('error', reject);
+    proc.on('error', (e) => { clearTimeout(timer); reject(e); });
     proc.on('close', (code, signal) => {
+      clearTimeout(timer);
       if (code === 0) {
         jobLog.info(`ffmpeg done: ${path.basename(output)}`);
         resolve(output);
