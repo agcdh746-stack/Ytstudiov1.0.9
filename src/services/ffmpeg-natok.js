@@ -43,6 +43,129 @@ function killJob(jobId) {
   return n;
 }
 
+// ── Silence Removal ──────────────────────────────────────────────────
+// Only for clips < 3 minutes AND no background music.
+// Uses silencedetect to find non-silent segments, then concat-trims them.
+const SILENCE_NOISE      = -35;   // dB threshold
+const SILENCE_DURATION   = 0.4;   // seconds of silence to detect
+const SILENCE_MAX_SEC    = 180;   // only apply when clip duration < this
+
+async function removeSilence(inputPath, start, duration, workDir, jobLog, jobId) {
+  if (duration >= SILENCE_MAX_SEC) return null; // skip for long clips
+
+  const detectOut = path.join(workDir, `silence_detect_${Date.now()}.txt`);
+
+  // Step 1: detect silence
+  await new Promise((resolve, reject) => {
+    const args = [
+      '-hide_banner', '-loglevel', 'info',
+      '-ss', ffTime(Math.max(0, start - 0.05)),
+      '-t', ffTime(duration),
+      '-i', inputPath,
+      '-af', `silencedetect=noise=${SILENCE_NOISE}dB:duration=${SILENCE_DURATION}`,
+      '-f', 'null', '-',
+    ];
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    if (jobId) trackProc(jobId, proc);
+    let stderr = '';
+    proc.stderr.on('data', d => { stderr += d.toString(); });
+    proc.on('error', reject);
+    proc.on('close', code => {
+      fs.writeFileSync(detectOut, stderr);
+      resolve();
+    });
+  });
+
+  // Step 2: parse silence_start / silence_end lines
+  const raw = fs.readFileSync(detectOut, 'utf8');
+  fs.unlinkSync(detectOut);
+
+  const starts = [];
+  const ends   = [];
+  for (const line of raw.split('\n')) {
+    const ms = line.match(/silence_start:\s*([\d.]+)/);
+    const me = line.match(/silence_end:\s*([\d.]+)/);
+    if (ms) starts.push(parseFloat(ms[1]));
+    if (me) ends.push(parseFloat(me[1]));
+  }
+
+  // Build non-silent segments (relative to clip start)
+  const segments = [];
+  let pos = 0;
+  for (let i = 0; i < starts.length; i++) {
+    const silStart = starts[i] - (start - 0.05);
+    if (silStart > pos + 0.05) segments.push({ from: pos, to: silStart });
+    const silEnd = ends[i] !== undefined ? ends[i] - (start - 0.05) : duration;
+    pos = Math.min(silEnd, duration);
+  }
+  if (pos < duration - 0.05) segments.push({ from: pos, to: duration });
+
+  if (!segments.length || segments.length === 1 && segments[0].from < 0.1 && segments[0].to >= duration - 0.1) {
+    jobLog.info('silence removal: no significant silence found — skipping');
+    return null;
+  }
+
+  jobLog.info(`silence removal: ${segments.length} speech segments found (was ${duration.toFixed(1)}s)`);
+
+  // Step 3: trim each segment and concat
+  const parts = [];
+  const baseStart = Math.max(0, start - 0.05);
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const segDur = seg.to - seg.from;
+    if (segDur < 0.1) continue;
+    const partOut = path.join(workDir, `silence_part_${i}.mp4`);
+    const segStart = baseStart + seg.from;
+
+    await new Promise((resolve, reject) => {
+      const args = [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-ss', ffTime(segStart),
+        '-t', ffTime(segDur),
+        '-i', inputPath,
+        '-c', 'copy',
+        partOut,
+      ];
+      const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      if (jobId) trackProc(jobId, proc);
+      proc.on('error', reject);
+      proc.on('close', code => code === 0 ? resolve() : reject(new Error(`silence trim part ${i} failed`)));
+    });
+    parts.push(partOut);
+  }
+
+  if (!parts.length) return null;
+
+  // Step 4: concat parts
+  const concatOut = path.join(workDir, `silence_removed.mp4`);
+  const listFile  = path.join(workDir, `silence_concat.txt`);
+  fs.writeFileSync(listFile, parts.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'));
+
+  await new Promise((resolve, reject) => {
+    const args = [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'concat', '-safe', '0',
+      '-i', listFile,
+      '-c', 'copy',
+      '-movflags', '+faststart',
+      concatOut,
+    ];
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    if (jobId) trackProc(jobId, proc);
+    proc.on('error', reject);
+    proc.on('close', code => {
+      try { fs.unlinkSync(listFile); } catch (_) {}
+      for (const p of parts) { try { fs.unlinkSync(p); } catch (_) {} }
+      code === 0 ? resolve() : reject(new Error('silence concat failed'));
+    });
+  });
+
+  jobLog.info(`silence removal done → ${concatOut}`);
+  return concatOut; // caller uses this as new input, start=0
+}
+// ────────────────────────────────────────────────────────────────────
+
 const VIDEO_WIDTH  = parseInt(process.env.VIDEO_WIDTH  || '720', 10);
 const VIDEO_HEIGHT = parseInt(process.env.VIDEO_HEIGHT || '1280', 10);
 const PRESET  = process.env.FFMPEG_PRESET  || 'ultrafast';
@@ -97,6 +220,25 @@ async function makeClip({
   const speakerY     = H; // unused — no speaker bar
 
   fs.mkdirSync(workDir, { recursive: true });
+
+  // ── Silence removal (Shorts only: < 3min, no music) ──────────────
+  let effectiveInput = input;
+  let effectiveStart = start;
+  if (!musicFile && duration < SILENCE_MAX_SEC) {
+    try {
+      const silRemoved = await removeSilence(input, start, duration, workDir, jobLog, jobId);
+      if (silRemoved) {
+        effectiveInput = silRemoved;
+        effectiveStart = 0;
+        jobLog.info(`↳ using silence-removed file: ${path.basename(silRemoved)}`);
+      }
+    } catch (e) {
+      jobLog.warn(`silence removal failed (continuing with original): ${e.message}`);
+    }
+  } else if (musicFile) {
+    jobLog.info('silence removal: skipped (background music ON)');
+  }
+  // ─────────────────────────────────────────────────────────────────
 
   // 1) Title PNG
   const titleCanvasW  = styleConfig.titleCanvasW || (W - 40);
@@ -179,7 +321,7 @@ async function makeClip({
   const hasMic = !!speakerPng && fs.existsSync(MIC_PNG);
   const hasMusicFile = !!musicFile && fs.existsSync(musicFile);
 
-  const inputs = ['-ss', ffTime(Math.max(0, start - 0.05)), '-i', input, '-i', titlePng];
+  const inputs = ['-ss', ffTime(Math.max(0, effectiveStart - 0.05)), '-i', effectiveInput, '-i', titlePng];
   let idx = 2;
   let titleIdx = 1;
   let headerLeftIdx = null;
