@@ -247,6 +247,21 @@ async function runJob(id) {
   });
   activeProcs.set(id, child);
 
+  // Job-level timeout: min 30min, +10min per clip — kills stuck Python/FFmpeg
+  const clipCount = Array.isArray(job.clips) ? job.clips.length : (Array.isArray(job.sources) ? job.sources.length : 1);
+  const jobTimeoutMs = Math.max(1800, clipCount * 600) * 1000;
+  const jobTimer = setTimeout(() => {
+    jl.warn(`⏰ Sub Burner job timeout after ${Math.round(jobTimeoutMs/60000)}min — killing stuck process`);
+    try { child.kill('SIGKILL'); } catch (_) {}
+    const j = jobs[id];
+    if (j && j.status === 'running') {
+      j.status = 'failed';
+      j.error = `Job timeout after ${Math.round(jobTimeoutMs/60000)} minutes`;
+      j.finishedAt = Date.now();
+      saveStore();
+    }
+  }, jobTimeoutMs);
+
   // Parse stdout JSON lines
   let buf = '';
   child.stdout.on('data', chunk => {
@@ -275,6 +290,7 @@ async function runJob(id) {
   });
 
   child.on('close', code => {
+    clearTimeout(jobTimer);
     activeProcs.delete(id);
     if (aborted.has(id)) {
       jl.warn('Job aborted by user.');
