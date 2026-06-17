@@ -455,6 +455,7 @@ def ffprobe_meta(url, referer=''):
         'ffprobe', '-v', 'error',
         '-user_agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
         '-headers', headers_val,
+        *extra_m3u8_args(url),
         '-print_format', 'json', '-show_streams', '-show_format', url,
     ]
     try:
@@ -548,6 +549,15 @@ def make_headers_val(referer):
         val += f'Referer: {referer}\r\nOrigin: {referer}\r\n'
     return val
 
+def is_m3u8(url):
+    return '.m3u8' in (url or '').lower()
+
+def extra_m3u8_args(url):
+    """Return extra ffmpeg args needed for HLS/m3u8 streams."""
+    if is_m3u8(url):
+        return ['-allowed_extensions', 'ALL']
+    return []
+
 def build_audio_mix_args(bgm_path):
     """
     Return extra ffmpeg input + filter_complex args for BGM mixing.
@@ -577,6 +587,7 @@ def render_full(video_url, referer, ass_path, out_path, duration, crop_169,
             'ffmpeg', '-y',
             '-user_agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
             '-headers', make_headers_val(referer),
+            *extra_m3u8_args(video_url),
             *proxy_args,
             '-i', video_url,
             *bgm_inputs,
@@ -592,6 +603,7 @@ def render_full(video_url, referer, ass_path, out_path, duration, crop_169,
             'ffmpeg', '-y',
             '-user_agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
             '-headers', make_headers_val(referer),
+            *extra_m3u8_args(video_url),
             *proxy_args,
             '-i', video_url,
             '-vf', vf,
@@ -615,6 +627,7 @@ def render_clip(video_url, referer, ass_path, out_path, start_sec, clip_dur, cro
             'ffmpeg', '-y',
             '-user_agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
             '-headers', make_headers_val(referer),
+            *extra_m3u8_args(video_url),
             *proxy_args,
             '-ss', str(start_sec),
             '-i', video_url,
@@ -632,6 +645,7 @@ def render_clip(video_url, referer, ass_path, out_path, start_sec, clip_dur, cro
             'ffmpeg', '-y',
             '-user_agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
             '-headers', make_headers_val(referer),
+            *extra_m3u8_args(video_url),
             *proxy_args,
             '-ss', str(start_sec),
             '-i', video_url,
@@ -1161,6 +1175,7 @@ def main():
                 'ffmpeg', '-y',
                 '-user_agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
                 '-headers', headers_val,
+                *extra_m3u8_args(src_url),
                 *proxy_args,
                 '-ss', ts_str,
                 '-i', src_url,
