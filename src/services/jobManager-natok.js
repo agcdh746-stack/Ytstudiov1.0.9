@@ -167,8 +167,7 @@ function createJob(payload) {
   const cropMode     = VALID_CROPS.has(payload.cropMode) ? payload.cropMode : 'crop';
   const colorGrade   = VALID_GRADES.has(payload.colorGrade) ? payload.colorGrade : 'none';
   const customGradeFilter = (typeof payload.customGradeFilter === 'string' ? payload.customGradeFilter : '').trim();
-  const extractAudio = !!payload.extractAudio;  // optional audio extract mode
-  const customGradeFilter = (typeof payload.customGradeFilter === 'string' ? payload.customGradeFilter : '').trim();
+  const extractAudio = !!payload.extractAudio;
   const partial      = payload.partial !== false;
   const musicUrl     = payload.musicUrl || null;
   const musicVolume  = clamp(payload.musicVolume, 0, 1, 0.15);
@@ -196,10 +195,9 @@ function createJob(payload) {
     colorGrade,
     customGradeFilter,
     extractAudio,
-    audioExtractPath: null,    // merged audio এর path (download করতে)
-    cleanedAudioPath: null,    // তোর upload করা cleaned audio
-    waitingForAudio: false,    // pause state
-    customGradeFilter,
+    audioExtractPath: null,
+    cleanedAudioPath: null,
+    waitingForAudio: false,
     partial,
     musicUrl,
     musicVolume,
