@@ -161,7 +161,8 @@ function createJob(payload) {
       volume: payload.sr_bgm.volume || 25,
     } : null,
 
-    status:     'queued',
+    extractAudio: !!payload.extractAudio,  // optional audio extract mode
+    audioExtracts: {},   // { outputIndex: { path, file, waitingForAudio, cleanedAudioPath } }
     progress:   0,
     createdAt:  Date.now(),
     finishedAt: null,
@@ -341,6 +342,7 @@ function handlePyEvent(id, jl, obj) {
     }
     case 'clip_done': {
       if (obj.status === 'ready') {
+        const outputIdx = job.outputs.length;
         job.outputs.push({
           clip:  obj.index + 1,
           title: obj.title,
@@ -348,6 +350,38 @@ function handlePyEvent(id, jl, obj) {
           links: obj.links || {},
         });
         jl.info(`✅ Clip ${obj.index + 1} ready: ${obj.file}`);
+
+        // ── Audio Extract (optional) ──────────────────────────────
+        if (job.extractAudio && obj.file) {
+          const videoPath = obj.file; // Python sends full path
+          if (fs.existsSync(videoPath)) {
+            const audioOut = videoPath.replace(/\.mp4$/i, '_audio.aac');
+            jl.info(`🎵 Extracting audio for clip ${obj.index + 1}...`);
+            const { spawn: sp } = require('child_process');
+            const proc = sp('ffmpeg', [
+              '-hide_banner', '-loglevel', 'error', '-y',
+              '-i', videoPath,
+              '-vn', '-acodec', 'copy',
+              audioOut,
+            ], { stdio: 'ignore' });
+            proc.on('close', code => {
+              if (code === 0) {
+                job.audioExtracts[outputIdx] = {
+                  path: audioOut,
+                  file: path.basename(audioOut),
+                  videoPath,
+                  waitingForAudio: true,
+                  cleanedAudioPath: null,
+                };
+                saveStore();
+                jl.info(`⏸ Audio extracted, waiting for cleaned upload: ${path.basename(audioOut)}`);
+              } else {
+                jl.warn(`audio extract failed for clip ${obj.index + 1}`);
+              }
+            });
+          }
+        }
+        // ─────────────────────────────────────────────────────────
       } else {
         jl.error(`❌ Clip ${obj.index + 1} failed: ${obj.title}`);
       }
@@ -410,4 +444,4 @@ function deleteJob(id) {
   return true;
 }
 
-module.exports = { createJob, getJob, listJobs, deleteJob };
+module.exports = { createJob, getJob, listJobs, deleteJob, saveStore };
