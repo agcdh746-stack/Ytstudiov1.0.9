@@ -4,7 +4,7 @@ const router = require('express').Router();
 const path   = require('path');
 const fs     = require('fs');
 const multer = require('multer');
-const { createJob, getJob, listJobs, deleteJob } = require('../services/jobManager-subburner');
+const { createJob, getJob, listJobs, deleteJob, saveStore } = require('../services/jobManager-subburner');
 const { logger } = require('../utils/logger');
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/app/data/output';
@@ -164,6 +164,63 @@ router.get('/:id/files/:filename', (req, res) => {
     return res.status(404).json({ error: 'file not found' });
   res.setHeader('Cache-Control', 'no-store');
   res.download(filePath);
+});
+
+// ── GET /api/jobs/subburner/:id/outputs/:outIdx/audio — extracted audio download ──
+router.get('/:id/outputs/:outIdx/audio', (req, res) => {
+  const j = getJob(req.params.id);
+  if (!j) return res.status(404).json({ error: 'job not found' });
+  const extract = j.audioExtracts && j.audioExtracts[parseInt(req.params.outIdx)];
+  if (!extract || !fs.existsSync(extract.path))
+    return res.status(404).json({ error: 'audio not extracted yet' });
+  res.download(extract.path, extract.file || 'audio.aac');
+});
+
+// ── POST /api/jobs/subburner/:id/outputs/:outIdx/audio — cleaned audio upload ──
+const cleanedAudioStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(process.env.TEMP_DIR || '/tmp/waz', 'cleaned-audio');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => cb(null, `${Date.now()}_cleaned_${file.originalname}`),
+});
+const cleanedAudioUpload = multer({ storage: cleanedAudioStorage, limits: { fileSize: 500 * 1024 * 1024 } });
+
+router.post('/:id/outputs/:outIdx/audio', cleanedAudioUpload.single('audio'), async (req, res) => {
+  const j = getJob(req.params.id);
+  if (!j) return res.status(404).json({ error: 'job not found' });
+  const outIdx = parseInt(req.params.outIdx);
+  const extract = j.audioExtracts && j.audioExtracts[outIdx];
+  if (!extract) return res.status(400).json({ error: 'no audio extract for this output' });
+  if (!req.file) return res.status(400).json({ error: 'audio file required' });
+
+  // Replace audio in original video
+  const videoPath = extract.videoPath;
+  if (!fs.existsSync(videoPath))
+    return res.status(404).json({ error: 'original video not found' });
+
+  const replacedOut = videoPath.replace('.mp4', '_audiorepl.mp4');
+  const { spawn } = require('child_process');
+  await new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', videoPath,
+      '-i', req.file.path,
+      '-map', '0:v', '-map', '1:a',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+      '-shortest', replacedOut,
+    ], { stdio: 'ignore' });
+    proc.on('error', reject);
+    proc.on('close', code => code === 0 ? resolve() : reject(new Error('audio replace failed')));
+  });
+  fs.renameSync(replacedOut, videoPath);
+
+  j.audioExtracts[outIdx].cleanedAudioPath = req.file.path;
+  j.audioExtracts[outIdx].waitingForAudio = false;
+  saveStore();
+  logger.info(`[subburner] cleaned audio applied for job ${req.params.id} output ${outIdx}`);
+  res.json({ ok: true });
 });
 
 module.exports = router;
