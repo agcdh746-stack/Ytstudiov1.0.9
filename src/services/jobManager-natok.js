@@ -130,7 +130,7 @@ const VALID_STYLES = new Set([
   'natok_purple', 'natok_gold2', 'natok_green',
 ]);
 const VALID_CROPS  = new Set(['crop', 'fit']);
-const VALID_GRADES = new Set(['none', 'warm', 'cool', 'cinema', 'bright', 'natural']);
+const VALID_GRADES = new Set(['none', 'warm', 'cool', 'cinema', 'vivid', 'bright', 'natural', 'custom']);
 
 function buildDucking(payload) {
   const d = payload && typeof payload === 'object' ? payload : {};
@@ -166,6 +166,7 @@ function createJob(payload) {
   const defaultStyle = VALID_STYLES.has(payload.defaultStyle) ? payload.defaultStyle : 'centered';
   const cropMode     = VALID_CROPS.has(payload.cropMode) ? payload.cropMode : 'crop';
   const colorGrade   = VALID_GRADES.has(payload.colorGrade) ? payload.colorGrade : 'none';
+  const customGradeFilter = (typeof payload.customGradeFilter === 'string' ? payload.customGradeFilter : '').trim();
   const partial      = payload.partial !== false;
   const musicUrl     = payload.musicUrl || null;
   const musicVolume  = clamp(payload.musicVolume, 0, 1, 0.15);
@@ -191,6 +192,7 @@ function createJob(payload) {
     defaultStyle,
     cropMode,
     colorGrade,
+    customGradeFilter,
     partial,
     musicUrl,
     musicVolume,
@@ -365,6 +367,7 @@ async function runJob(id) {
             titleStyle: clip.style,
             cropMode: job.cropMode,
             colorGrade: job.colorGrade || 'none',
+            customGradeFilter: job.customGradeFilter || '',
             musicFile: job.musicPath || null,
             musicVolume: job.musicVolume || 0.15,
             musicStart: job.musicStart || 0,
