@@ -7,7 +7,7 @@
 // POT (BotGuard) provider integration fully stripped per user request.
 // =====================================================================
 
-const YTDLP_MODULE_VERSION = '2.6.1-natok-partial-noPOT';
+const YTDLP_MODULE_VERSION = '2.7.0-progressive-fast';
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
@@ -190,7 +190,7 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
       '--download-sections', sectionStr,
-      '-f', 'bv*[height<=720][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -252,7 +252,7 @@ async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) 
     const args = [
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
-      '-f', 'bv*[height<=720][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
