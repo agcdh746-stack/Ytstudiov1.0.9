@@ -167,6 +167,8 @@ function createJob(payload) {
   const cropMode     = VALID_CROPS.has(payload.cropMode) ? payload.cropMode : 'crop';
   const colorGrade   = VALID_GRADES.has(payload.colorGrade) ? payload.colorGrade : 'none';
   const customGradeFilter = (typeof payload.customGradeFilter === 'string' ? payload.customGradeFilter : '').trim();
+  const extractAudio = !!payload.extractAudio;  // optional audio extract mode
+  const customGradeFilter = (typeof payload.customGradeFilter === 'string' ? payload.customGradeFilter : '').trim();
   const partial      = payload.partial !== false;
   const musicUrl     = payload.musicUrl || null;
   const musicVolume  = clamp(payload.musicVolume, 0, 1, 0.15);
@@ -192,6 +194,11 @@ function createJob(payload) {
     defaultStyle,
     cropMode,
     colorGrade,
+    customGradeFilter,
+    extractAudio,
+    audioExtractPath: null,    // merged audio এর path (download করতে)
+    cleanedAudioPath: null,    // তোর upload করা cleaned audio
+    waitingForAudio: false,    // pause state
     customGradeFilter,
     partial,
     musicUrl,
@@ -392,6 +399,77 @@ async function runJob(id) {
           await concatClips(tempParts, out, jl, id);
           jl.info(`🧩 Recap merge done: ${filename}`);
         }
+
+        // ── Audio Extract & Wait (optional) ──────────────────────────
+        if (job.extractAudio && !checkAborted(id)) {
+          const audioOut = path.join(OUTPUT_DIR, `${id}__${String(clip.index + 1).padStart(2, '0')}__audio.aac`);
+          jl.info(`🎵 Extracting audio: ${path.basename(audioOut)}`);
+          await new Promise((resolve, reject) => {
+            const { spawn: sp } = require('child_process');
+            const proc = sp('ffmpeg', [
+              '-hide_banner', '-loglevel', 'error', '-y',
+              '-i', out,
+              '-vn', '-acodec', 'copy',
+              audioOut,
+            ], { stdio: 'ignore' });
+            trackProc(id, proc);
+            proc.on('error', reject);
+            proc.on('close', code => code === 0 ? resolve() : reject(new Error('audio extract failed')));
+          });
+          clip.audioExtractPath = audioOut;
+          clip.audioExtractFile = path.basename(audioOut);
+          clip.waitingForAudio = true;
+          clip.status = 'waiting_audio';
+          saveStore();
+          jl.info(`⏸ Waiting for cleaned audio upload: clip ${clip.index + 1}`);
+
+          // Wait until cleanedAudioPath is set (poll every 3s, max 30min)
+          await new Promise((resolve) => {
+            const MAX_WAIT = 30 * 60 * 1000;
+            const started = Date.now();
+            const interval = setInterval(() => {
+              const fresh = jobs[id];
+              if (!fresh || checkAborted(id)) { clearInterval(interval); resolve(); return; }
+              const freshClip = fresh.clips[clip.index];
+              if (freshClip && freshClip.cleanedAudioPath) {
+                clip.cleanedAudioPath = freshClip.cleanedAudioPath;
+                clearInterval(interval);
+                resolve();
+              } else if (Date.now() - started > MAX_WAIT) {
+                jl.warn(`⏰ Audio wait timeout — continuing without cleaned audio`);
+                clearInterval(interval);
+                resolve();
+              }
+            }, 3000);
+          });
+
+          // Replace audio in video with cleaned audio if provided
+          if (clip.cleanedAudioPath && fs.existsSync(clip.cleanedAudioPath)) {
+            jl.info(`🔄 Replacing audio with cleaned version: ${path.basename(clip.cleanedAudioPath)}`);
+            const replacedOut = out.replace('.mp4', '_audiorepl.mp4');
+            await new Promise((resolve, reject) => {
+              const { spawn: sp } = require('child_process');
+              const proc = sp('ffmpeg', [
+                '-hide_banner', '-loglevel', 'error', '-y',
+                '-i', out,
+                '-i', clip.cleanedAudioPath,
+                '-map', '0:v', '-map', '1:a',
+                '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+                '-shortest', replacedOut,
+              ], { stdio: 'ignore' });
+              trackProc(id, proc);
+              proc.on('error', reject);
+              proc.on('close', code => code === 0 ? resolve() : reject(new Error('audio replace failed')));
+            });
+            fs.renameSync(replacedOut, out);
+            jl.info(`✅ Audio replaced successfully`);
+          }
+
+          clip.waitingForAudio = false;
+          clip.status = 'rendering';
+          saveStore();
+        }
+        // ─────────────────────────────────────────────────────────────
 
         if (checkAborted(id)) { jl.warn('Job aborted right after clip ' + (clip.index + 1)); return; }
 
