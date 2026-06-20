@@ -130,7 +130,7 @@ const VALID_STYLES = new Set([
   'natok_purple', 'natok_gold2', 'natok_green',
 ]);
 const VALID_CROPS  = new Set(['crop', 'fit']);
-const VALID_GRADES = new Set(['none', 'warm', 'cool', 'cinema', 'vivid', 'bright', 'natural', 'custom']);
+const VALID_GRADES = new Set(['none', 'warm', 'cool', 'cinema', 'vivid', 'bright', 'natural', 'custom', 'hdr_warm', 'hdr_cool', 'hdr_cinema', 'hdr_vivid', 'hdr_natural', 'hdr_drama']);
 
 function buildDucking(payload) {
   const d = payload && typeof payload === 'object' ? payload : {};
