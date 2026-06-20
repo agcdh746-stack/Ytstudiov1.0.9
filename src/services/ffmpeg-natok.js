@@ -194,6 +194,7 @@ async function makeClip({
   titleStyle = 'centered',
   cropMode = 'crop',
   colorGrade = 'none',
+  customGradeFilter = '',
   musicFile = null,
   musicVolume = 0.15,
   musicStart = 0,
@@ -367,7 +368,7 @@ async function makeClip({
     );
   }
 
-  const gradedSq = applyColorGrade(videoChain, colorGrade);
+  const gradedSq = applyColorGrade(videoChain, colorGrade, customGradeFilter);
 
   // ── Mr Beast style punch zoom (5s cycle: 3s zoom-in 1.00→1.05, 2s zoom-out 1.05→1.00) ──
   const ZOOM_FPS    = 30;
@@ -806,18 +807,18 @@ function applyTitleBackground(videoChain, layer, titleStyle, styleConfig, W, tit
   return layer;
 }
 
-function applyColorGrade(videoChain, grade) {
+function applyColorGrade(videoChain, grade, customFilter = '') {
   if (!grade || grade === 'none') {
     videoChain.push('[sq]null[graded]');
     return 'graded';
   }
 
   let filter = '';
-  if (grade === 'warm') {
-    // Hollywood warm grade — skin orange-amber push, background teal, shadows crushed
+  if (grade === 'custom') {
+    filter = (customFilter || '').trim() || 'eq=saturation=1.0';
+  } else if (grade === 'warm') {
     filter = `eq=saturation=1.3:contrast=1.22:brightness=-0.05:gamma_r=1.08:gamma_b=0.88,colorlevels=romin=0.04:gomin=0.02:bomin=0.0:rimax=0.96:gimax=0.94:bimax=0.88`;
   } else if (grade === 'cool') {
-    // Korean/Japanese drama cool grade — blue-cyan dominance, muted, dreamy, lifted shadows
     filter = `eq=saturation=0.65:contrast=1.08:brightness=0.04:gamma_r=0.88:gamma_b=1.18,colorlevels=romin=0.0:gomin=0.04:bomin=0.12:rimax=0.88:gimax=0.92:bimax=1.0`;
   } else if (grade === 'cinema') {
     filter = `eq=saturation=0.82:contrast=1.18:brightness=-0.04:gamma=0.92`;
