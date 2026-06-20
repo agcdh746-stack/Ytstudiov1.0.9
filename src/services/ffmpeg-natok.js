@@ -509,7 +509,7 @@ async function makeClip({
     audioMap = '[aout]';
   }
 
-  const filterComplex = videoChain.join(';');
+  const filterComplex = videoChain.filter(f => f && f.trim()).join(';');
 
   const args = [
     '-hide_banner', '-loglevel', 'error', '-stats', '-y',
@@ -816,8 +816,6 @@ function applyColorGrade(videoChain, grade, customFilter = '') {
   let filter = '';
   if (grade === 'custom') {
     filter = (customFilter || '').trim() || 'eq=saturation=1.0';
-
-  // ── Standard grades ───────────────────────────────────────────
   } else if (grade === 'warm') {
     filter = `eq=saturation=1.3:contrast=1.22:brightness=-0.05:gamma_r=1.08:gamma_b=0.88,colorlevels=romin=0.04:gomin=0.02:bomin=0.0:rimax=0.96:gimax=0.94:bimax=0.88`;
   } else if (grade === 'cool') {
@@ -826,39 +824,6 @@ function applyColorGrade(videoChain, grade, customFilter = '') {
     filter = `eq=saturation=0.82:contrast=1.18:brightness=-0.04:gamma=0.92`;
   } else if (grade === 'vivid') {
     filter = `eq=saturation=1.55:contrast=1.12:brightness=0.015`;
-
-  // ── HDR Presets ───────────────────────────────────────────────
-  } else if (grade === 'hdr_warm') {
-    // HDR Warm — সূর্যাস্তের মতো গরম আলো, deep shadows, punchy highlights
-    filter = `eq=saturation=1.6:contrast=1.35:brightness=-0.04:gamma_r=1.15:gamma_g=1.02:gamma_b=0.82,` +
-             `colorlevels=romin=0.05:gomin=0.02:bomin=0.0:rimax=0.98:gimax=0.95:bimax=0.82,` +
-             `unsharp=lx=3:ly=3:la=0.4`;
-  } else if (grade === 'hdr_cool') {
-    // HDR Cool — Korean drama style, icy blue-teal, lifted shadows, crisp detail
-    filter = `eq=saturation=1.25:contrast=1.28:brightness=0.03:gamma_r=0.85:gamma_g=0.98:gamma_b=1.22,` +
-             `colorlevels=romin=0.0:gomin=0.03:bomin=0.1:rimax=0.86:gimax=0.94:bimax=1.0,` +
-             `unsharp=lx=3:ly=3:la=0.35`;
-  } else if (grade === 'hdr_cinema') {
-    // HDR Cinema — Hollywood blockbuster, teal-orange split, crushed blacks, high contrast
-    filter = `eq=saturation=1.4:contrast=1.45:brightness=-0.06:gamma=0.88:gamma_r=1.1:gamma_b=0.85,` +
-             `colorlevels=romin=0.06:gomin=0.01:bomin=0.0:rimax=0.97:gimax=0.92:bimax=0.86,` +
-             `unsharp=lx=5:ly=5:la=0.5`;
-  } else if (grade === 'hdr_vivid') {
-    // HDR Vivid — maximum punch, neon-saturated, high brightness, social media ready
-    filter = `eq=saturation=1.85:contrast=1.3:brightness=0.04:gamma_r=1.05:gamma_g=1.02:gamma_b=1.08,` +
-             `colorlevels=romin=0.02:gomin=0.02:bomin=0.02:rimax=0.99:gimax=0.99:bimax=0.99,` +
-             `unsharp=lx=3:ly=3:la=0.45`;
-  } else if (grade === 'hdr_natural') {
-    // HDR Natural — realistic HDR, balanced, slight lift in shadows, clean highlights
-    filter = `eq=saturation=1.2:contrast=1.22:brightness=0.01:gamma=0.95,` +
-             `colorlevels=romin=0.02:gomin=0.02:bomin=0.02:rimax=0.97:gimax=0.97:bimax=0.97,` +
-             `unsharp=lx=3:ly=3:la=0.3`;
-  } else if (grade === 'hdr_drama') {
-    // HDR Drama — deep moody, near-black shadows, high contrast, desaturated mids
-    filter = `eq=saturation=1.1:contrast=1.55:brightness=-0.08:gamma=0.85:gamma_r=1.05:gamma_b=0.95,` +
-             `colorlevels=romin=0.08:gomin=0.06:bomin=0.05:rimax=0.95:gimax=0.93:bimax=0.92,` +
-             `unsharp=lx=5:ly=5:la=0.5`;
-
   } else {
     videoChain.push('[sq]null[graded]');
     return 'graded';
