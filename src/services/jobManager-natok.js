@@ -168,6 +168,7 @@ function createJob(payload) {
   const colorGrade   = VALID_GRADES.has(payload.colorGrade) ? payload.colorGrade : 'none';
   const customGradeFilter = (typeof payload.customGradeFilter === 'string' ? payload.customGradeFilter : '').trim();
   const partial      = payload.partial !== false;
+  const extractAudio = !!payload.extractAudio;
   const musicUrl     = payload.musicUrl || null;
   const musicVolume  = clamp(payload.musicVolume, 0, 1, 0.15);
   const musicStart   = clamp(payload.musicStart, 0, 86400, 0);
@@ -194,6 +195,7 @@ function createJob(payload) {
     colorGrade,
     customGradeFilter,
     partial,
+    extractAudio,
     musicUrl,
     musicVolume,
     musicStart,
@@ -419,6 +421,32 @@ async function runJob(id) {
         clip.status = 'ready';
         saveStore();
         jl.info(`🎬 Clip ${clip.index + 1} ready: ${filename}`);
+
+        // ── Audio Extract (vocal clean workflow) ─────────────────────
+        if (job.extractAudio) {
+          try {
+            const audioOut = path.join(OUTPUT_DIR, filename.replace(/\.mp4$/, '.m4a'));
+            jl.info(`🎵 Extracting audio for vocal clean: ${path.basename(audioOut)}`);
+            await new Promise((resolve, reject) => {
+              const { spawn: sp } = require('child_process');
+              const proc = sp('ffmpeg', [
+                '-y', '-i', out,
+                '-vn', '-acodec', 'copy',
+                audioOut,
+              ], { stdio: 'ignore' });
+              proc.on('close', code => code === 0 ? resolve() : reject(new Error(`ffmpeg audio extract exited ${code}`)));
+              proc.on('error', reject);
+            });
+            clip.audioPath = audioOut;
+            clip.audioFilename = path.basename(audioOut);
+            clip.status = 'waiting_audio';
+            clip.waitingForAudio = true;
+            saveStore();
+            jl.info(`⏸ Clip ${clip.index + 1} waiting for cleaned audio upload: ${path.basename(audioOut)}`);
+          } catch (ae) {
+            jl.warn(`Audio extract failed (skipping): ${ae.message}`);
+          }
+        }
       } catch (e) {
         clip.status = 'failed';
         clip.error = e.message;
@@ -484,4 +512,74 @@ function deleteJob(id) {
   return true;
 }
 
-module.exports = { createJob, getJob, listJobs, deleteJob, saveStore };
+// ── Resume clip with cleaned audio ──────────────────────────────────
+// Called from route when user uploads vocal-cleaned audio.
+// Re-renders the clip with cleaned audio + bg music, replaces the file.
+async function resumeWithCleanedAudio(jobId, clipIndex, cleanedAudioPath) {
+  const job = jobs[jobId];
+  if (!job) throw new Error('Job not found');
+  const clip = job.clips[clipIndex];
+  if (!clip) throw new Error('Clip not found');
+  if (clip.status !== 'waiting_audio') throw new Error('Clip is not waiting for audio');
+
+  const jl = logger.child(`[job:${jobId}]`);
+  const out = path.join(OUTPUT_DIR, clip.filename);
+  const tempOut = out.replace(/\.mp4$/, '_rerender.mp4');
+
+  clip.status = 'rerendering';
+  saveStore();
+  jl.info(`🔁 Re-rendering clip ${clipIndex + 1} with cleaned audio: ${path.basename(cleanedAudioPath)}`);
+
+  try {
+    // Mix cleaned audio + bg music using ffmpeg
+    const inputs = ['-i', out, '-i', cleanedAudioPath];
+    const hasBgMusic = job.musicPath && fs.existsSync(job.musicPath);
+    if (hasBgMusic) inputs.push('-i', job.musicPath);
+
+    let audioFilter, audioMap;
+    if (hasBgMusic) {
+      const vol = job.musicVolume || 0.15;
+      audioFilter = `[1:a]highpass=f=180,speechnorm=e=12.5:r=0.0001:l=1[va];[2:a]volume=${vol},aloop=loop=-1:size=2e+09[bg];[va][bg]amix=inputs=2:duration=first:dropout_transition=3[aout]`;
+      audioMap = '[aout]';
+    } else {
+      audioFilter = `[1:a]highpass=f=180,speechnorm=e=12.5:r=0.0001:l=1[aout]`;
+      audioMap = '[aout]';
+    }
+
+    await new Promise((resolve, reject) => {
+      const { spawn: sp } = require('child_process');
+      const args = [
+        '-y',
+        ...inputs,
+        '-filter_complex', audioFilter,
+        '-map', '0:v',
+        '-map', audioMap,
+        '-c:v', 'copy',
+        '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '44100',
+        '-shortest',
+        '-movflags', '+faststart',
+        tempOut,
+      ];
+      const proc = sp('ffmpeg', args, { stdio: 'ignore' });
+      proc.on('close', code => code === 0 ? resolve() : reject(new Error(`ffmpeg rerender exited ${code}`)));
+      proc.on('error', reject);
+    });
+
+    // Replace original with re-rendered
+    fs.renameSync(tempOut, out);
+    clip.status = 'ready';
+    clip.waitingForAudio = false;
+    clip.cleanedAudioPath = cleanedAudioPath;
+    saveStore();
+    jl.info(`✅ Clip ${clipIndex + 1} re-rendered with cleaned audio`);
+  } catch (e) {
+    if (fs.existsSync(tempOut)) try { fs.unlinkSync(tempOut); } catch (_) {}
+    clip.status = 'failed';
+    clip.error = `Re-render failed: ${e.message}`;
+    saveStore();
+    jl.error(`❌ Re-render failed: ${e.message}`);
+    throw e;
+  }
+}
+
+module.exports = { createJob, getJob, listJobs, deleteJob, saveStore, resumeWithCleanedAudio };
