@@ -1,15 +1,21 @@
 'use strict';
 
 const router = require('express').Router();
-const { createJob, getJob, listJobs, deleteJob } = require('../services/jobManager-natok');
+const path   = require('path');
+const fs     = require('fs');
+const multer = require('multer');
+const { createJob, getJob, listJobs, deleteJob, resumeWithCleanedAudio } = require('../services/jobManager-natok');
 const { logger } = require('../utils/logger');
+
+const TEMP_DIR = process.env.TEMP_DIR || '/tmp/waz';
+const upload   = multer({ dest: TEMP_DIR });
 
 router.post('/', (req, res) => {
   try {
     const {
       url, speaker, defaultStyle, cropMode, clips, partial,
       colorGrade, musicUrl, musicVolume, musicStart, musicEnd,
-      headerText, followText, ducking,
+      headerText, followText, ducking, extractAudio,
     } = req.body || {};
 
     if (!url || !String(url).trim()) {
@@ -21,7 +27,6 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: 'clips[] required (at least one clip or recap item)' });
     }
 
-    // Accept range as string OR ranges as string/array. Title auto-fills if missing.
     function hasAnyRange(c) {
       if (Array.isArray(c.ranges) && c.ranges.some(r => String(r || '').trim())) return true;
       if (typeof c.ranges === 'string' && c.ranges.trim()) return true;
@@ -38,13 +43,48 @@ router.post('/', (req, res) => {
     const job = createJob({
       url, speaker, defaultStyle, cropMode, clips, partial,
       colorGrade, musicUrl, musicVolume, musicStart, musicEnd,
-      headerText, followText, ducking,
+      headerText, followText, ducking, extractAudio,
     });
-    logger.info(`[natok route] ✓ job ${job.id} created with ${job.clips.length} clip(s)`);
+    logger.info(`[natok route] ✓ job ${job.id} created with ${job.clips.length} clip(s) extractAudio=${!!extractAudio}`);
     res.json({ ok: true, jobId: job.id, job });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Audio download — user downloads extracted audio for vocal clean ──
+router.get('/:id/clips/:clipIndex/audio', (req, res) => {
+  const j = getJob(req.params.id);
+  if (!j) return res.status(404).json({ error: 'job not found' });
+  const clip = j.clips[parseInt(req.params.clipIndex, 10)];
+  if (!clip) return res.status(404).json({ error: 'clip not found' });
+  if (!clip.audioPath || !fs.existsSync(clip.audioPath)) {
+    return res.status(404).json({ error: 'audio not ready yet' });
+  }
+  res.download(clip.audioPath, clip.audioFilename || 'audio.m4a');
+});
+
+// ── Audio upload — user uploads vocal-cleaned audio ──────────────────
+router.post('/:id/clips/:clipIndex/audio', upload.single('audio'), async (req, res) => {
+  try {
+    const j = getJob(req.params.id);
+    if (!j) return res.status(404).json({ error: 'job not found' });
+    const clipIndex = parseInt(req.params.clipIndex, 10);
+    const clip = j.clips[clipIndex];
+    if (!clip) return res.status(404).json({ error: 'clip not found' });
+    if (clip.status !== 'waiting_audio') {
+      return res.status(400).json({ error: `clip status is '${clip.status}', expected 'waiting_audio'` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'no audio file uploaded' });
+
+    const cleanedPath = req.file.path;
+    // Run re-render async, respond immediately
+    res.json({ ok: true, message: 'Audio received, re-rendering...' });
+    await resumeWithCleanedAudio(req.params.id, clipIndex, cleanedPath);
+  } catch (e) {
+    logger.error('[natok audio upload]', e.message);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
 });
 
