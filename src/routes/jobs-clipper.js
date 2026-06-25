@@ -28,7 +28,7 @@ router.post('/', (req, res) => {
       url, speaker, defaultStyle, cropMode, clips, partial,
       colorGrade, musicUrl, musicVolume,
       headerText, followText, ducking,
-      thumbnailCard,
+      thumbnailCard, zoomEffect,
     } = req.body || {};
 
     if (!url || !String(url).trim()) {
@@ -72,7 +72,7 @@ router.post('/', (req, res) => {
       url, speaker, defaultStyle, cropMode, clips, partial,
       colorGrade, musicUrl, musicVolume,
       headerText, followText, ducking,
-      thumbnailCard,
+      thumbnailCard, zoomEffect,
     });
     logger.info(`[clipper route] ✓ job ${job.id} created with ${job.clips.length} clip(s)`);
     res.json({ ok: true, jobId: job.id, job });
