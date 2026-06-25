@@ -198,7 +198,7 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
       '--download-sections', sectionStr,
-      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
+      '-f', b[height<=720][ext=mp4]/b[height<=480][ext=mp4]/b[height<=360][ext=mp4]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b,
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -260,7 +260,7 @@ async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) 
     const args = [
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
-      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
+      '-f', b[height<=720][ext=mp4]/b[height<=480][ext=mp4]/b[height<=360][ext=mp4]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b,
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
