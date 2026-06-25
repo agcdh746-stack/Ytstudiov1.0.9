@@ -54,6 +54,7 @@ function buildCommonArgs(jobLog) {
   const args = [
     '--no-warnings',
     '--no-progress',
+    '--no-check-certificates',
     '--newline',
     '--no-playlist',
     '--retries', '10',
@@ -130,7 +131,13 @@ function killJob(jobId) {
   if (!set) return 0;
   let n = 0;
   for (const p of set) {
-    try { p.kill('SIGKILL'); n++; } catch (_) {}
+    try {
+      if (p.pid) {
+        try { process.kill(-p.pid, 'SIGKILL'); } catch (_) {}
+      }
+      p.kill('SIGKILL');
+      n++;
+    } catch (_) {}
   }
   RUNNING.delete(jobId);
   return n;
@@ -139,7 +146,7 @@ function killJob(jobId) {
 function runYtdlpOnce(args, jobLog, jobId) {
   return new Promise((resolve, reject) => {
     jobLog.info('yt-dlp', args.map(a => a.includes(' ') ? `"${a}"` : a).join(' '));
-    const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     if (jobId) trackProc(jobId, proc);
     let stderrBuf = '', stdoutBuf = '';
     proc.stdout.on('data', d => {
