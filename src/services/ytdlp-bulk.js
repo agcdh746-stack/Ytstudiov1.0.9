@@ -51,6 +51,7 @@ function buildCommonArgs(jobLog) {
 
   const args = [
     '--no-warnings',
+    '--no-check-certificates',
     // FIX (v3.0.6): Removed --no-progress so UI live-log shows download
     // progress every ~1s (e.g. "[download] 45.2% of 9.00MiB at 1.20MiB/s
     // ETA 00:04"). Previously the log went silent for 2-4 minutes after
