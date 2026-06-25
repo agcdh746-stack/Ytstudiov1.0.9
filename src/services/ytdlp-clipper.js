@@ -1,13 +1,13 @@
 'use strict';
 
 // =====================================================================
-// YT Studio — Clipper download service (waz-clipper v2.6, POT REMOVED)
+// YT Studio — Clipper download service (waz-clipper v2.7.1-ssl-fix)
 //
 // Inherits all of waz v2.6's per-clip partial download logic, with the
 // POT (BotGuard) provider integration fully stripped per user request.
 // =====================================================================
 
-const YTDLP_MODULE_VERSION = '2.7.0-progressive-fast';
+const YTDLP_MODULE_VERSION = '2.7.1-ssl-fix';
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
@@ -54,7 +54,6 @@ function buildCommonArgs(jobLog) {
   const args = [
     '--no-warnings',
     '--no-progress',
-    '--no-check-certificates',
     '--newline',
     '--no-playlist',
     '--retries', '10',
@@ -69,7 +68,7 @@ function buildCommonArgs(jobLog) {
     '--add-header', 'Origin:https://www.youtube.com',
   ];
 
-  // Parallel chunking — same as bulk v3.0.5 (works over VMess/SOCKS5 tunnel too)
+  // Parallel chunking
   args.push(
     '--hls-prefer-native',
     '--concurrent-fragments', '4',
@@ -82,7 +81,10 @@ function buildCommonArgs(jobLog) {
     if (jobLog) jobLog.info('🔧 Direct mode: parallel chunking (4 connections, 10M chunks)');
   }
 
-  // Deno JS runtime — required for yt-dlp 2025.11+ JS challenge
+  // FFmpeg SSL verify off — fixes certificate verify failed via proxy
+  args.push('--downloader-args', 'ffmpeg:-tls_verify 0');
+
+  // Deno JS runtime
   if (denoBin) {
     args.push('--extractor-args', `youtube:jsruntime=deno`);
     if (jobLog) jobLog.info(`✓ Deno JS runtime: ${denoBin}`);
@@ -116,7 +118,7 @@ const STRATEGIES = [
 ];
 
 // Track running child processes per-job so deleteJob can kill them
-const RUNNING = new Map();   // jobId → Set<ChildProcess>
+const RUNNING = new Map();
 function trackProc(jobId, proc) {
   if (!RUNNING.has(jobId)) RUNNING.set(jobId, new Set());
   RUNNING.get(jobId).add(proc);
@@ -131,7 +133,6 @@ function killJob(jobId) {
   let n = 0;
   for (const p of set) {
     try {
-      // Kill entire process group (yt-dlp + its child ffmpeg)
       if (p.pid) {
         try { process.kill(-p.pid, 'SIGKILL'); } catch (_) {}
       }
