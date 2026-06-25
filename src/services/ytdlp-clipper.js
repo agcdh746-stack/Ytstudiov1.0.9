@@ -1,13 +1,6 @@
 'use strict';
 
-// =====================================================================
-// YT Studio — Clipper download service (waz-clipper v2.7.1-ssl-fix)
-//
-// Inherits all of waz v2.6's per-clip partial download logic, with the
-// POT (BotGuard) provider integration fully stripped per user request.
-// =====================================================================
-
-const YTDLP_MODULE_VERSION = '2.7.1-ssl-fix';
+const YTDLP_MODULE_VERSION = '2.7.2-no-protocol-filter';
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
@@ -18,7 +11,6 @@ const { ffTime, parseRange } = require('../utils/timestamp');
 const COOKIES_FILE = process.env.COOKIES_FILE || '/app/data/cookies/cookies.txt';
 const TEMP_DIR     = process.env.TEMP_DIR     || '/tmp/waz';
 
-// ---------- Deno JS runtime detection (shared bypass with bulk) ----------
 let DENO_BIN = null;
 function detectDeno() {
   if (DENO_BIN !== null) return DENO_BIN;
@@ -46,6 +38,8 @@ function detectProxyType() {
   return 'direct';
 }
 
+const FORMAT_STR = 'b[height<=720][ext=mp4]/b[height<=480][ext=mp4]/b[height<=360][ext=mp4]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b';
+
 function buildCommonArgs(jobLog) {
   const proxyType = detectProxyType();
   const isSocks   = proxyType === 'socks5';
@@ -66,27 +60,21 @@ function buildCommonArgs(jobLog) {
     '--geo-bypass',
     '--referer', 'https://www.youtube.com/',
     '--add-header', 'Origin:https://www.youtube.com',
-  ];
-
-  // Parallel chunking
-  args.push(
     '--hls-prefer-native',
     '--concurrent-fragments', '4',
     '-N', '4',
     '--http-chunk-size', '10M',
-  );
+    '--downloader-args', 'ffmpeg:-tls_verify 0',
+  ];
+
   if (isSocks) {
     if (jobLog) jobLog.info('🔧 VMess/SOCKS5 mode: parallel chunking (4 connections, 10M chunks)');
   } else {
     if (jobLog) jobLog.info('🔧 Direct mode: parallel chunking (4 connections, 10M chunks)');
   }
 
-  // FFmpeg SSL verify off — fixes certificate verify failed via proxy
-  args.push('--downloader-args', 'ffmpeg:-tls_verify 0');
-
-  // Deno JS runtime
   if (denoBin) {
-    args.push('--extractor-args', `youtube:jsruntime=deno`);
+    args.push('--extractor-args', 'youtube:jsruntime=deno');
     if (jobLog) jobLog.info(`✓ Deno JS runtime: ${denoBin}`);
   } else if (jobLog) {
     jobLog.warn('⚠ Deno not installed — YouTube JS challenge may fail');
@@ -108,16 +96,15 @@ function buildCommonArgs(jobLog) {
 }
 
 const STRATEGIES = [
-  { name: 'web_embedded', client: 'web_embedded', desc: 'embeddable only, best success rate' },
-  { name: 'mweb',         client: 'mweb',         desc: 'mobile web' },
-  { name: 'ios',          client: 'ios',          desc: 'iOS client, bypasses most restrictions' },
-  { name: 'android',      client: 'android',      desc: 'Android client, strong bypass' },
-  { name: 'web_safari',   client: 'web_safari',   desc: 'HLS, cookie-friendly, no PO required' },
-  { name: 'tv_simply',    client: 'tv_simply',    desc: 'no PO, no cookies needed' },
-  { name: 'android_vr',   client: 'android_vr',   desc: 'kids-safe fallback' },
+  { name: 'web_embedded', client: 'web_embedded' },
+  { name: 'mweb',         client: 'mweb' },
+  { name: 'ios',          client: 'ios' },
+  { name: 'android',      client: 'android' },
+  { name: 'web_safari',   client: 'web_safari' },
+  { name: 'tv_simply',    client: 'tv_simply' },
+  { name: 'android_vr',   client: 'android_vr' },
 ];
 
-// Track running child processes per-job so deleteJob can kill them
 const RUNNING = new Map();
 function trackProc(jobId, proc) {
   if (!RUNNING.has(jobId)) RUNNING.set(jobId, new Set());
@@ -133,9 +120,7 @@ function killJob(jobId) {
   let n = 0;
   for (const p of set) {
     try {
-      if (p.pid) {
-        try { process.kill(-p.pid, 'SIGKILL'); } catch (_) {}
-      }
+      if (p.pid) { try { process.kill(-p.pid, 'SIGKILL'); } catch (_) {} }
       p.kill('SIGKILL');
       n++;
     } catch (_) {}
@@ -198,7 +183,7 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
       '--download-sections', sectionStr,
-      '-f', b[height<=720][ext=mp4]/b[height<=480][ext=mp4]/b[height<=360][ext=mp4]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b,
+      '-f', FORMAT_STR,
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -213,13 +198,7 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
       const elapsed = Date.now() - startMs;
       const sizeMB = (fs.statSync(result).size / (1024 * 1024)).toFixed(1);
       jobLog.info(`  ✅ Section ${sectionIndex} via "${strategy.name}" in ${(elapsed/1000).toFixed(1)}s (${sizeMB} MB)`);
-
-      stats.record({
-        url, success: true, strategy: strategy.name,
-        proxyType, hasCookies, hasPOT: false,
-        duration_ms: elapsed,
-        partial: true,
-      });
+      stats.record({ url, success: true, strategy: strategy.name, proxyType, hasCookies, hasPOT: false, duration_ms: elapsed, partial: true });
       return { path: result, sectionStart: padStart, sectionEnd: padEnd };
     } catch (e) {
       const elapsed = Date.now() - startMs;
@@ -231,16 +210,8 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
     }
   }
 
-  stats.record({
-    url, success: false, strategy: 'all_exhausted',
-    proxyType, hasCookies, hasPOT: false, duration_ms: 0,
-    error: errors.slice(0, 2).join(' | '),
-  });
-
-  throw new Error(
-    `Section ${sectionIndex} failed on all ${STRATEGIES.length} strategies.\n` +
-    `Errors:\n  → ${errors.join('\n  → ')}`
-  );
+  stats.record({ url, success: false, strategy: 'all_exhausted', proxyType, hasCookies, hasPOT: false, duration_ms: 0, error: errors.slice(0, 2).join(' | ') });
+  throw new Error(`Section ${sectionIndex} failed on all ${STRATEGIES.length} strategies.\nErrors:\n  → ${errors.join('\n  → ')}`);
 }
 
 async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) {
@@ -260,7 +231,7 @@ async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) 
     const args = [
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
-      '-f', b[height<=720][ext=mp4]/b[height<=480][ext=mp4]/b[height<=360][ext=mp4]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b,
+      '-f', FORMAT_STR,
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -274,21 +245,14 @@ async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) 
       const elapsed = Date.now() - startMs;
       const sizeMB = (fs.statSync(result).size / (1024 * 1024)).toFixed(1);
       jobLog.info(`✅ Full download via "${strategy.name}" in ${(elapsed/1000).toFixed(1)}s (${sizeMB} MB)`);
-      stats.record({
-        url, success: true, strategy: strategy.name,
-        proxyType, hasCookies, hasPOT: false, duration_ms: elapsed, partial: false,
-      });
+      stats.record({ url, success: true, strategy: strategy.name, proxyType, hasCookies, hasPOT: false, duration_ms: elapsed, partial: false });
       return { path: result, sectionStart: 0, sectionEnd: null };
     } catch (e) {
       jobLog.warn(`✗ Full DL "${strategy.name}" failed: ${(e.message || '').slice(0, 200)}`);
       errors.push(`[${strategy.name}] ${(e.message || '').slice(0, 200)}`);
     }
   }
-  stats.record({
-    url, success: false, strategy: 'all_exhausted',
-    proxyType, hasCookies, hasPOT: false, duration_ms: 0,
-    error: errors.slice(0, 2).join(' | '),
-  });
+  stats.record({ url, success: false, strategy: 'all_exhausted', proxyType, hasCookies, hasPOT: false, duration_ms: 0, error: errors.slice(0, 2).join(' | ') });
   throw new Error(`All ${STRATEGIES.length} full-download strategies failed.\n  → ${errors.join('\n  → ')}`);
 }
 
@@ -300,64 +264,32 @@ async function downloadVideo(url, jobId, jobLog, opts = {}) {
 
   const proxyType  = detectProxyType();
   const hasCookies = fs.existsSync(COOKIES_FILE) && fs.statSync(COOKIES_FILE).size > 100;
-
-  const partial = opts.partial && Array.isArray(opts.clipRanges) && opts.clipRanges.length;
+  const partial    = opts.partial && Array.isArray(opts.clipRanges) && opts.clipRanges.length;
 
   if (partial) {
     jobLog.info(`📌 PARTIAL MODE (per-clip): ${opts.clipRanges.length} section(s) — each downloaded to its own file`);
-
     const sources = [];
     for (let idx = 0; idx < opts.clipRanges.length; idx++) {
       const range = opts.clipRanges[idx];
       try {
-        const dl = await downloadOneSection(
-          url, workDir, idx + 1, range, jobLog, hasCookies, proxyType, jobId,
-        );
-        sources.push({
-          clipIndex: idx,
-          range,
-          sourcePath: dl.path,
-          sectionStart: dl.sectionStart,
-          sectionEnd: dl.sectionEnd,
-        });
+        const dl = await downloadOneSection(url, workDir, idx + 1, range, jobLog, hasCookies, proxyType, jobId);
+        sources.push({ clipIndex: idx, range, sourcePath: dl.path, sectionStart: dl.sectionStart, sectionEnd: dl.sectionEnd });
       } catch (e) {
         jobLog.error(`❌ Section ${idx + 1} (${range}) failed: ${e.message}`);
-        sources.push({
-          clipIndex: idx,
-          range,
-          sourcePath: null,
-          sectionStart: null,
-          sectionEnd: null,
-          error: e.message,
-        });
+        sources.push({ clipIndex: idx, range, sourcePath: null, sectionStart: null, sectionEnd: null, error: e.message });
       }
     }
-
     const ok = sources.filter(s => s.sourcePath).length;
-    if (ok === 0) {
-      throw new Error('All sections failed to download. See logs.');
-    }
+    if (ok === 0) throw new Error('All sections failed to download. See logs.');
     jobLog.info(`📦 Partial download complete: ${ok}/${sources.length} sections OK`);
     return { mode: 'partial', sources };
   }
 
   const dl = await downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId);
   const sources = (opts.clipRanges || [null]).map((range, idx) => ({
-    clipIndex: idx,
-    range,
-    sourcePath: dl.path,
-    sectionStart: 0,
-    sectionEnd: dl.sectionEnd,
+    clipIndex: idx, range, sourcePath: dl.path, sectionStart: 0, sectionEnd: dl.sectionEnd,
   }));
   return { mode: 'full', sources };
 }
 
-module.exports = {
-  downloadVideo,
-  YTDLP_MODULE_VERSION,
-  STRATEGIES,
-  detectDeno,
-  detectProxyType,
-  buildCommonArgs,
-  killJob,
-};
+module.exports = { downloadVideo, YTDLP_MODULE_VERSION, STRATEGIES, detectDeno, detectProxyType, buildCommonArgs, killJob };
