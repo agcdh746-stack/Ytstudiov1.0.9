@@ -80,6 +80,7 @@ async function makeClip({
   followText = 'Follow Us',
   ducking = null,
   subtitles = [],
+  zoomEffect = 'none',
 }) {
   const W = VIDEO_WIDTH;
   const H = VIDEO_HEIGHT;
@@ -229,13 +230,29 @@ async function makeClip({
 
   const gradedSq = applyColorGrade(videoChain, colorGrade);
 
+  // ── Repeating pulse zoom: 3s normal → 2s zoomed out → repeat ────────
+  // zoomEffect: 'none' | 'pulse' (3s full, 2s 95% zoom)
+  let finalSq = gradedSq;
+  if (zoomEffect === 'pulse') {
+    // 95% zoom out = crop center 95% then scale back to full size
+    // z = zoom factor: 1.0 = normal, 0.95 = zoom out
+    // Using scale+crop: scale up by 1/z, crop to original size
+    // cycle = 5s (3s normal + 2s zoom), modulo with t
+    videoChain.push(
+      `[${gradedSq}]scale=${videoSQ * 2}:${videoSQ * 2}:flags=lanczos,` +
+      `crop='if(lt(mod(t\\,5)\\,3)\\,${videoSQ}\\,${Math.round(videoSQ / 0.95)})':'if(lt(mod(t\\,5)\\,3)\\,${videoSQ}\\,${Math.round(videoSQ / 0.95)})':(${videoSQ * 2}-out_w)/2:(${videoSQ * 2}-out_h)/2,` +
+      `scale=${videoSQ}:${videoSQ}:flags=lanczos[zoomed]`
+    );
+    finalSq = 'zoomed';
+  }
+
   const dCeil = Math.max(1, Math.ceil(duration));
   const bgFilter = styleConfig.bgFilter
     ? styleConfig.bgFilter(W, H, dCeil, duration)
     : `color=c=black:s=${W}x${H}:r=30:d=${dCeil},trim=duration=${duration},setpts=PTS-STARTPTS`;
 
   videoChain.push(`${bgFilter}[bg]`);
-  videoChain.push(`[bg][${gradedSq}]overlay=0:${videoY}[base]`);
+  videoChain.push(`[bg][${finalSq}]overlay=0:${videoY}[base]`);
   let layer = '[base]';
 
   // Optional header bar
