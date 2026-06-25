@@ -7,7 +7,7 @@
 // POT (BotGuard) provider integration fully stripped per user request.
 // =====================================================================
 
-const YTDLP_MODULE_VERSION = '2.8.0-single-call-sections';
+const YTDLP_MODULE_VERSION = '2.7.0-progressive-fast';
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
@@ -162,48 +162,35 @@ function runYtdlpOnce(args, jobLog, jobId) {
   });
 }
 
-// =====================================================================
-// downloadAllSections — একটাই yt-dlp call এ সব section নামায়
-// =====================================================================
-async function downloadAllSections(url, workDir, ranges, jobLog, hasCookies, proxyType, jobId) {
-  const sections = ranges.map((range, idx) => {
-    const { start, end } = parseRange(range);
-    const padStart = Math.max(0, start - 2);
-    const padEnd   = end + 2;
-    return { idx, range, start, end, padStart, padEnd };
-  });
+async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, hasCookies, proxyType, jobId) {
+  const { start, end } = parseRange(range);
+  const padStart = Math.max(0, start - 2);
+  const padEnd   = end + 2;
 
-  jobLog.info(`📌 SINGLE-CALL MODE: ${sections.length} section(s) — one yt-dlp call, one auth, one sleep`);
-  sections.forEach(s => {
-    jobLog.info(`  Section ${s.idx + 1}: ${ffTime(s.start)}→${ffTime(s.end)} (padded ${ffTime(s.padStart)}→${ffTime(s.padEnd)})`);
-  });
+  const sectionStr = `*${ffTime(padStart)}-${ffTime(padEnd)}`;
+  const baseName   = `source_${String(sectionIndex).padStart(2, '0')}`;
+  const outTpl     = path.join(workDir, `${baseName}.%(ext)s`);
+
+  jobLog.info(`━━━ Section ${sectionIndex}: original ${ffTime(start)}→${ffTime(end)} (padded ${ffTime(padStart)}→${ffTime(padEnd)}) ━━━`);
 
   try {
     for (const f of fs.readdirSync(workDir)) {
-      if (f.startsWith('source_') || f.startsWith('raw_section') || f.endsWith('.part')) {
-        fs.unlinkSync(path.join(workDir, f));
-      }
+      if (f.startsWith(baseName)) fs.unlinkSync(path.join(workDir, f));
     }
   } catch (_) {}
 
   const commonArgs = buildCommonArgs(jobLog);
   const errors = [];
 
-  for (let si = 0; si < STRATEGIES.length; si++) {
-    const strategy = STRATEGIES[si];
-    jobLog.info(`━━━ Strategy ${si + 1}/${STRATEGIES.length}: ${strategy.name} — all ${sections.length} sections ━━━`);
-
-    const outTpl = path.join(workDir, 'raw_section_%(section_start)s.%(ext)s');
-    const sectionArgs = [];
-    for (const s of sections) {
-      sectionArgs.push('--download-sections', `*${ffTime(s.padStart)}-${ffTime(s.padEnd)}`);
-    }
+  for (let i = 0; i < STRATEGIES.length; i++) {
+    const strategy = STRATEGIES[i];
+    jobLog.info(`  → strategy ${i + 1}/${STRATEGIES.length}: ${strategy.name}`);
 
     const args = [
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
-      ...sectionArgs,
-      '-f', 'bv*[height<=720][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '--download-sections', sectionStr,
+      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -212,66 +199,28 @@ async function downloadAllSections(url, workDir, ranges, jobLog, hasCookies, pro
     const startMs = Date.now();
     try {
       await runYtdlpOnce(args, jobLog, jobId);
-    } catch (e) {
-      jobLog.warn(`yt-dlp exited non-zero (${e.code || '?'}) — checking output files anyway`);
-    }
-
-    let rawFiles = [];
-    try {
-      rawFiles = fs.readdirSync(workDir)
-        .filter(f => f.startsWith('raw_section_') && !f.endsWith('.part') && !f.endsWith('.ytdl'))
-        .sort();
-    } catch (_) {}
-
-    if (rawFiles.length === 0) {
+      const files = fs.readdirSync(workDir).filter(f => f.startsWith(baseName + '.') && !f.endsWith('.part'));
+      if (!files.length) throw new Error('finished but no source file produced');
+      const result = path.join(workDir, files[0]);
       const elapsed = Date.now() - startMs;
-      jobLog.warn(`  ✗ "${strategy.name}" failed after ${(elapsed/1000).toFixed(1)}s — no output files`);
-      errors.push(`[${strategy.name}] no output files produced`);
-      continue;
+      const sizeMB = (fs.statSync(result).size / (1024 * 1024)).toFixed(1);
+      jobLog.info(`  ✅ Section ${sectionIndex} via "${strategy.name}" in ${(elapsed/1000).toFixed(1)}s (${sizeMB} MB)`);
+
+      stats.record({
+        url, success: true, strategy: strategy.name,
+        proxyType, hasCookies, hasPOT: false,
+        duration_ms: elapsed,
+        partial: true,
+      });
+      return { path: result, sectionStart: padStart, sectionEnd: padEnd };
+    } catch (e) {
+      const elapsed = Date.now() - startMs;
+      const isBotError = /Sign in to confirm|not a bot|requires.*login/i.test(e.stderr || e.message || '');
+      const isFormatError = /requested format|no video formats|HTTP Error 4\d\d/i.test(e.stderr || '');
+      const reason = isBotError ? 'BOT_DETECTION' : isFormatError ? 'FORMAT_UNAVAILABLE' : 'OTHER';
+      jobLog.warn(`  ✗ "${strategy.name}" failed (${reason}) after ${(elapsed/1000).toFixed(1)}s`);
+      errors.push(`[${strategy.name}] ${(e.message || '').slice(0, 200)}`);
     }
-
-    jobLog.info(`  Found ${rawFiles.length} file(s) from yt-dlp (expected ${sections.length})`);
-
-    const results = [];
-    for (let i = 0; i < rawFiles.length; i++) {
-      const rawPath = path.join(workDir, rawFiles[i]);
-      const ext = path.extname(rawFiles[i]).slice(1) || 'mp4';
-      const targetName = `source_${String(i + 1).padStart(2, '0')}.${ext}`;
-      const targetPath = path.join(workDir, targetName);
-      try {
-        fs.renameSync(rawPath, targetPath);
-        const sizeMB = (fs.statSync(targetPath).size / (1024 * 1024)).toFixed(1);
-        jobLog.info(`  ✅ ${rawFiles[i]} → ${targetName} (${sizeMB} MB)`);
-        results.push(targetPath);
-      } catch (renErr) {
-        jobLog.error(`  rename failed: ${renErr.message}`);
-        results.push(null);
-      }
-    }
-
-    const elapsed = Date.now() - startMs;
-    const sources = sections.map((s, i) => ({
-      clipIndex: s.idx,
-      range: s.range,
-      sourcePath: results[i] || null,
-      sectionStart: s.padStart,
-      sectionEnd: s.padEnd,
-    }));
-
-    const ok = sources.filter(s => s.sourcePath).length;
-    if (ok === 0) {
-      jobLog.warn(`  ✗ "${strategy.name}" — mapping failed, trying next strategy`);
-      errors.push(`[${strategy.name}] mapping failed`);
-      continue;
-    }
-
-    jobLog.info(`✅ "${strategy.name}" SUCCESS in ${(elapsed/1000).toFixed(1)}s — ${ok}/${sections.length} sections`);
-    stats.record({
-      url, success: true, strategy: strategy.name,
-      proxyType, hasCookies, hasPOT: false,
-      duration_ms: elapsed, partial: true,
-    });
-    return sources;
   }
 
   stats.record({
@@ -281,7 +230,7 @@ async function downloadAllSections(url, workDir, ranges, jobLog, hasCookies, pro
   });
 
   throw new Error(
-    `All ${STRATEGIES.length} strategies failed.\n` +
+    `Section ${sectionIndex} failed on all ${STRATEGIES.length} strategies.\n` +
     `Errors:\n  → ${errors.join('\n  → ')}`
   );
 }
@@ -303,7 +252,7 @@ async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) 
     const args = [
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
-      '-f', 'bv*[height<=720][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -347,8 +296,39 @@ async function downloadVideo(url, jobId, jobLog, opts = {}) {
   const partial = opts.partial && Array.isArray(opts.clipRanges) && opts.clipRanges.length;
 
   if (partial) {
-    const sources = await downloadAllSections(url, workDir, opts.clipRanges, jobLog, hasCookies, proxyType, jobId);
+    jobLog.info(`📌 PARTIAL MODE (per-clip): ${opts.clipRanges.length} section(s) — each downloaded to its own file`);
+
+    const sources = [];
+    for (let idx = 0; idx < opts.clipRanges.length; idx++) {
+      const range = opts.clipRanges[idx];
+      try {
+        const dl = await downloadOneSection(
+          url, workDir, idx + 1, range, jobLog, hasCookies, proxyType, jobId,
+        );
+        sources.push({
+          clipIndex: idx,
+          range,
+          sourcePath: dl.path,
+          sectionStart: dl.sectionStart,
+          sectionEnd: dl.sectionEnd,
+        });
+      } catch (e) {
+        jobLog.error(`❌ Section ${idx + 1} (${range}) failed: ${e.message}`);
+        sources.push({
+          clipIndex: idx,
+          range,
+          sourcePath: null,
+          sectionStart: null,
+          sectionEnd: null,
+          error: e.message,
+        });
+      }
+    }
+
     const ok = sources.filter(s => s.sourcePath).length;
+    if (ok === 0) {
+      throw new Error('All sections failed to download. See logs.');
+    }
     jobLog.info(`📦 Partial download complete: ${ok}/${sources.length} sections OK`);
     return { mode: 'partial', sources };
   }
