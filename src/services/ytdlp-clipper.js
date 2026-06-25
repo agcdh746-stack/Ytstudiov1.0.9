@@ -7,7 +7,7 @@
 // POT (BotGuard) provider integration fully stripped per user request.
 // =====================================================================
 
-const YTDLP_MODULE_VERSION = '2.8.0-per-section-dash';
+const YTDLP_MODULE_VERSION = '2.7.0-progressive-fast';
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
@@ -189,7 +189,7 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
       '--download-sections', sectionStr,
-      '-f', 'bv*[height<=720][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -204,7 +204,13 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
       const elapsed = Date.now() - startMs;
       const sizeMB = (fs.statSync(result).size / (1024 * 1024)).toFixed(1);
       jobLog.info(`  ✅ Section ${sectionIndex} via "${strategy.name}" in ${(elapsed/1000).toFixed(1)}s (${sizeMB} MB)`);
-      stats.record({ url, success: true, strategy: strategy.name, proxyType, hasCookies, hasPOT: false, duration_ms: elapsed, partial: true });
+
+      stats.record({
+        url, success: true, strategy: strategy.name,
+        proxyType, hasCookies, hasPOT: false,
+        duration_ms: elapsed,
+        partial: true,
+      });
       return { path: result, sectionStart: padStart, sectionEnd: padEnd };
     } catch (e) {
       const elapsed = Date.now() - startMs;
@@ -216,10 +222,17 @@ async function downloadOneSection(url, workDir, sectionIndex, range, jobLog, has
     }
   }
 
-  stats.record({ url, success: false, strategy: 'all_exhausted', proxyType, hasCookies, hasPOT: false, duration_ms: 0, error: errors.slice(0, 2).join(' | ') });
-  throw new Error(`Section ${sectionIndex} failed on all ${STRATEGIES.length} strategies.\nErrors:\n  → ${errors.join('\n  → ')}`);
-}
+  stats.record({
+    url, success: false, strategy: 'all_exhausted',
+    proxyType, hasCookies, hasPOT: false, duration_ms: 0,
+    error: errors.slice(0, 2).join(' | '),
+  });
 
+  throw new Error(
+    `Section ${sectionIndex} failed on all ${STRATEGIES.length} strategies.\n` +
+    `Errors:\n  → ${errors.join('\n  → ')}`
+  );
+}
 
 async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) {
   const commonArgs = buildCommonArgs(jobLog);
@@ -238,7 +251,7 @@ async function downloadFull(url, workDir, jobLog, hasCookies, proxyType, jobId) 
     const args = [
       ...commonArgs,
       '--extractor-args', `youtube:player_client=${strategy.client}`,
-      '-f', 'bv*[height<=720][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+      '-f', 'b[height<=720][ext=mp4][protocol*=https]/b[height<=480][ext=mp4][protocol*=https]/b[height<=360][ext=mp4][protocol*=https]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b',
       '--merge-output-format', 'mp4',
       '-o', outTpl,
       url,
@@ -283,19 +296,38 @@ async function downloadVideo(url, jobId, jobLog, opts = {}) {
 
   if (partial) {
     jobLog.info(`📌 PARTIAL MODE (per-clip): ${opts.clipRanges.length} section(s) — each downloaded to its own file`);
+
     const sources = [];
     for (let idx = 0; idx < opts.clipRanges.length; idx++) {
       const range = opts.clipRanges[idx];
       try {
-        const dl = await downloadOneSection(url, workDir, idx + 1, range, jobLog, hasCookies, proxyType, jobId);
-        sources.push({ clipIndex: idx, range, sourcePath: dl.path, sectionStart: dl.sectionStart, sectionEnd: dl.sectionEnd });
+        const dl = await downloadOneSection(
+          url, workDir, idx + 1, range, jobLog, hasCookies, proxyType, jobId,
+        );
+        sources.push({
+          clipIndex: idx,
+          range,
+          sourcePath: dl.path,
+          sectionStart: dl.sectionStart,
+          sectionEnd: dl.sectionEnd,
+        });
       } catch (e) {
         jobLog.error(`❌ Section ${idx + 1} (${range}) failed: ${e.message}`);
-        sources.push({ clipIndex: idx, range, sourcePath: null, sectionStart: null, sectionEnd: null, error: e.message });
+        sources.push({
+          clipIndex: idx,
+          range,
+          sourcePath: null,
+          sectionStart: null,
+          sectionEnd: null,
+          error: e.message,
+        });
       }
     }
+
     const ok = sources.filter(s => s.sourcePath).length;
-    if (ok === 0) throw new Error('All sections failed to download. See logs.');
+    if (ok === 0) {
+      throw new Error('All sections failed to download. See logs.');
+    }
     jobLog.info(`📦 Partial download complete: ${ok}/${sources.length} sections OK`);
     return { mode: 'partial', sources };
   }
