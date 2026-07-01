@@ -172,7 +172,6 @@ function createJob(payload) {
   const musicStart   = clamp(payload.musicStart, 0, 86400, 0);
   const musicEnd     = clamp(payload.musicEnd, 0, 86400, 0);
   const ducking      = buildDucking(payload.ducking);
-  const zoomEffect   = payload.zoomEffect === 'pulse' ? 'pulse' : 'none';
 
   // Thumbnail card injection (mid-frame, ~0.004s, used as YT thumbnail).
   // Default ON. Disable per-job by passing { thumbnailCard: { enabled: false } }.
@@ -198,7 +197,6 @@ function createJob(payload) {
     musicStart,
     musicEnd,
     ducking,
-    zoomEffect,
     thumbnailCard,
     musicPath: null,
     status: 'queued',
@@ -380,7 +378,6 @@ async function runJob(id) {
             followText: job.followText,
             ducking: job.ducking,
             subtitles: clip.subtitles || [],
-            zoomEffect: job.zoomEffect || 'none',
           });
 
           tempParts.push(partOut);
