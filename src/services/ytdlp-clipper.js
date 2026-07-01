@@ -42,7 +42,7 @@ const FORMAT_STR = 'b[height<=720][ext=mp4]/b[height<=480][ext=mp4]/b[height<=36
 
 function buildCommonArgs(jobLog) {
   const proxyType = detectProxyType();
-  const isSocks   = proxyType === 'socks5';
+  const isSocks   = proxyType === 'socks5' || proxyType === 'vmess';
   const denoBin   = detectDeno();
 
   const args = [
@@ -60,16 +60,19 @@ function buildCommonArgs(jobLog) {
     '--geo-bypass',
     '--referer', 'https://www.youtube.com/',
     '--add-header', 'Origin:https://www.youtube.com',
-    '--hls-prefer-native',
-    '--concurrent-fragments', '4',
-    '-N', '4',
-    '--http-chunk-size', '10M',
-    '--downloader-args', 'ffmpeg:-tls_verify 0',
   ];
 
+  // SOCKS5/VMess: ffmpeg does not support SOCKS proxies — use native single-fragment
   if (isSocks) {
-    if (jobLog) jobLog.info('🔧 VMess/SOCKS5 mode: parallel chunking (4 connections, 10M chunks)');
+    args.push(
+      '--hls-prefer-native',
+      '--concurrent-fragments', '1',
+      '-N', '1',
+      '--no-part',
+    );
+    if (jobLog) jobLog.info('🔧 SOCKS5/VMess mode: native downloader, single fragment');
   } else {
+    args.push('--hls-prefer-native', '--concurrent-fragments', '4', '-N', '4', '--http-chunk-size', '10M');
     if (jobLog) jobLog.info('🔧 Direct mode: parallel chunking (4 connections, 10M chunks)');
   }
 
